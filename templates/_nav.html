@@ -1,0 +1,186 @@
+<!-- Barra Superior de Navegación (_nav.html) -->
+<header class="bg-white border-b border-zinc-200 sticky top-0 z-40" x-data="navCRM()" x-init="iniciarNav()">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+    
+    <!-- Logo & Nombre del Negocio -->
+    <a href="/" class="flex items-center gap-2.5 shrink-0 group">
+      <div class="w-10 h-10 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center font-bold shadow-sm">
+        <i data-lucide="funnel" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold text-zinc-900 tracking-tight leading-tight group-hover:text-amber-600 transition-colors">
+          {{ config.nombre_negocio }}
+        </h1>
+        <span class="text-[10px] text-zinc-500 font-medium tracking-wide uppercase">
+          {{ 'Preventa & Reparto' if config.rubro_perfil == 'preventista' else 'Servicios & Presupuestos' }}
+        </span>
+      </div>
+    </a>
+
+    <!-- Enlaces Principales Desktop -->
+    <nav class="hidden md:flex items-center gap-1 bg-zinc-100 p-1 rounded-xl">
+      <a href="/" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 {{ 'bg-white text-zinc-900 shadow-xs' if activa == 'tablero' else 'text-zinc-600 hover:text-zinc-900' }}">
+        <i data-lucide="kanban" class="w-3.5 h-3.5"></i>
+        <span>Tablero</span>
+      </a>
+      <a href="/pedidos" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 {{ 'bg-white text-zinc-900 shadow-xs' if activa == 'pedidos' else 'text-zinc-600 hover:text-zinc-900' }}">
+        <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+        <span>Tomar Pedido</span>
+      </a>
+      <a href="/clientes" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 {{ 'bg-white text-zinc-900 shadow-xs' if activa == 'clientes' else 'text-zinc-600 hover:text-zinc-900' }}">
+        <i data-lucide="users" class="w-3.5 h-3.5"></i>
+        <span>Clientes (GPS)</span>
+      </a>
+      <a href="/catalogo" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 {{ 'bg-white text-zinc-900 shadow-xs' if activa == 'catalogo' else 'text-zinc-600 hover:text-zinc-900' }}">
+        <i data-lucide="package" class="w-3.5 h-3.5"></i>
+        <span>Precios / Catálogo</span>
+      </a>
+      <a href="/configuracion" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 {{ 'bg-white text-zinc-900 shadow-xs' if activa == 'configuracion' else 'text-zinc-600 hover:text-zinc-900' }}">
+        <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+        <span>Configuración</span>
+      </a>
+    </nav>
+
+    <!-- Acciones Rápidas (QR Wi-Fi + Exportar Excel + Salir) -->
+    <div class="flex items-center gap-2">
+      <!-- Botón Exportar Excel -->
+      <a href="/api/pedidos/exportar-excel" download title="Descargar pedidos en Excel (CSV)"
+         class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-bold text-zinc-700 transition-colors shadow-xs">
+        <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-600"></i>
+        <span class="hidden lg:inline">Excel</span>
+      </a>
+
+      <!-- Botón Conectar Celular (QR Wi-Fi) -->
+      <button type="button" @click="abrirQRWiFi()" title="Conectar celular por Wi-Fi"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-xs font-bold text-blue-700 transition-colors cursor-pointer">
+        <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">QR Wi-Fi</span>
+      </button>
+
+      <!-- Salir / Cerrar Sesión -->
+      <button type="button" @click="cerrarSesion()" title="Cerrar turno"
+              class="w-9 h-9 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 flex items-center justify-center text-zinc-500 hover:text-zinc-900 transition-colors cursor-pointer">
+        <i data-lucide="log-out" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Navegación Móvil Inferior (Barra Táctil Fija para la calle) -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-zinc-200 flex items-center justify-around py-2 px-2 shadow-lg">
+    <a href="/" class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold {{ 'text-amber-600' if activa == 'tablero' else 'text-zinc-500' }}">
+      <i data-lucide="kanban" class="w-4 h-4"></i>
+      <span>Tablero</span>
+    </a>
+    <a href="/pedidos" class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold {{ 'text-amber-600' if activa == 'pedidos' else 'text-zinc-500' }}">
+      <i data-lucide="plus-circle" class="w-4 h-4"></i>
+      <span>Nuevo</span>
+    </a>
+    <a href="/clientes" class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold {{ 'text-amber-600' if activa == 'clientes' else 'text-zinc-500' }}">
+      <i data-lucide="users" class="w-4 h-4"></i>
+      <span>Clientes</span>
+    </a>
+    <a href="/catalogo" class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold {{ 'text-amber-600' if activa == 'catalogo' else 'text-zinc-500' }}">
+      <i data-lucide="package" class="w-4 h-4"></i>
+      <span>Catálogo</span>
+    </a>
+    <a href="/configuracion" class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold {{ 'text-amber-600' if activa == 'configuracion' else 'text-zinc-500' }}">
+      <i data-lucide="settings" class="w-4 h-4"></i>
+      <span>Ajustes</span>
+    </a>
+  </nav>
+
+  <!-- Banner Flotante de Alerta de Seguridad (Anti-Fuerza Bruta) -->
+  <div x-show="alertaActiva" x-cloak
+       class="fixed top-16 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-xl bg-red-600 text-white px-4 py-3 rounded-2xl shadow-2xl border border-red-400 flex items-center justify-between gap-3 animate-bounce">
+    <div class="flex items-center gap-2.5">
+      <i data-lucide="shield-alert" class="w-5 h-5 text-amber-300 shrink-0"></i>
+      <div class="text-xs">
+        <p class="font-bold uppercase tracking-wider text-amber-200">Alerta de Seguridad</p>
+        <p x-text="alertaTexto" class="font-medium"></p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <a href="/auditoria" class="px-2.5 py-1 bg-white text-red-700 font-bold text-xs rounded-lg hover:bg-red-50">Ver</a>
+      <button type="button" @click="descartarAlerta()" class="text-white hover:text-red-200 text-xs font-bold px-1.5 cursor-pointer">✕</button>
+    </div>
+  </div>
+
+  <!-- Modal QR Wi-Fi para conectar celulares -->
+  <div x-show="modalQR" x-cloak
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-2xl max-w-xs w-full p-6 shadow-2xl border border-zinc-200 text-center space-y-4">
+      <div class="flex items-center justify-between border-b border-zinc-100 pb-2">
+        <div class="flex items-center gap-2 text-zinc-900 font-bold text-xs uppercase tracking-wider">
+          <i data-lucide="wifi" class="w-4 h-4 text-blue-600"></i>
+          <span>Conectar Celular</span>
+        </div>
+        <button type="button" @click="modalQR = false" class="text-zinc-400 hover:text-zinc-600 font-bold text-sm">✕</button>
+      </div>
+      <p class="text-xs text-zinc-500">
+        Escanéalo con la cámara de tu celular conectado al mismo Wi-Fi:
+      </p>
+      <div class="w-48 h-48 mx-auto bg-zinc-50 rounded-xl p-2 border border-zinc-200 flex items-center justify-center" x-html="qrSvg"></div>
+      <code class="block text-[11px] font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg break-all" x-text="qrUrl"></code>
+      <button type="button" @click="modalQR = false" class="w-full py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-semibold">
+        Cerrar
+      </button>
+    </div>
+  </div>
+</header>
+
+<script>
+  function navCRM() {
+    return {
+      alertaActiva: false,
+      alertaTexto: '',
+      alertaId: 0,
+      modalQR: false,
+      qrUrl: '',
+      qrSvg: '',
+
+      async iniciarNav() {
+        if (window.lucide) lucide.createIcons();
+        try {
+          const r = await fetch('/api/seguridad/alertas');
+          if (r.ok) {
+            const list = await r.json();
+            if (Array.isArray(list) && list.length > 0) {
+              const a = list[0];
+              this.alertaId = a.id;
+              this.alertaTexto = (a.detalles || 'Intentos fallidos') + ' (IP: ' + a.ip_origen + ')';
+              this.alertaActiva = true;
+              this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+            }
+          }
+        } catch (_) {}
+      },
+
+      async descartarAlerta() {
+        if (this.alertaId) {
+          try { await fetch('/api/seguridad/alertas/' + this.alertaId + '/descartar', { method: 'POST' }); } catch (_) {}
+        }
+        this.alertaActiva = false;
+      },
+
+      async abrirQRWiFi() {
+        this.modalQR = true;
+        if (!this.qrUrl) {
+          try {
+            const r = await fetch('/api/red/info');
+            if (r.ok) {
+              const d = await r.json();
+              this.qrUrl = d.url;
+              this.qrSvg = d.qr_svg;
+            }
+          } catch (_) {}
+        }
+        this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+      },
+
+      async cerrarSesion() {
+        try { await fetch('/api/logout', { method: 'POST' }); } catch (_) {}
+        window.location.href = '/login';
+      }
+    };
+  }
+</script>

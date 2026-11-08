@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="crmGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="50%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="amberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#crmGrad)"/>
+  <rect x="24" y="24" width="464" height="464" rx="92" fill="none" stroke="#334155" stroke-width="6"/>
+  <!-- Funnel / Pipeline Icon -->
+  <path d="M120 140 H392 L296 260 V370 L216 340 V260 Z" fill="none" stroke="url(#amberGrad)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Check / Arrow accent -->
+  <circle cx="370" cy="350" r="44" fill="#10B981"/>
+  <polyline points="350,350 365,365 395,335" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

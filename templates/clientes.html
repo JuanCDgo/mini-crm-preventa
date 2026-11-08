@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-zinc-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Clientes & Rutas GPS | {{ config.nombre_negocio }}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#09090b">
+  
+  <script src="/static/vendor/tailwind.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
+  <script src="/static/vendor/lucide.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="h-full flex flex-col antialiased text-zinc-900 bg-zinc-100"
+      x-data="clientesCRM()" x-init="iniciar()">
+
+  <!-- Barra de Navegación -->
+  {% include "_nav.html" %}
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
+    
+    <!-- Encabezado & Acciones -->
+    <div class="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+        <h2 class="text-base font-black text-zinc-900 tracking-tight">Directorio de Clientes</h2>
+        <p class="text-xs text-zinc-500 font-medium">Gestión de ruta, saldos y navegación GPS en la calle</p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div class="relative flex-1 sm:w-64">
+          <i data-lucide="search" class="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input type="text" x-model="filtro" placeholder="Buscar por nombre o dirección..."
+                 class="w-full pl-9 pr-3 py-2 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+
+        <button type="button" @click="abrirModalNuevo()"
+                class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-transform active:scale-95 shadow-sm cursor-pointer shrink-0">
+          <i data-lucide="user-plus" class="w-4 h-4"></i>
+          <span>Nuevo Cliente</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Grilla de Tarjetas de Clientes -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+      <template x-for="c in clientesFiltrados" :key="c.id">
+        <div class="bg-white rounded-2xl p-4 border border-zinc-200/90 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
+          
+          <div>
+            <!-- Nombre y Badge de Deuda (solo si debe) -->
+            <div class="flex items-start justify-between gap-2 mb-1.5">
+              <h3 class="text-xs font-black text-zinc-900 tracking-tight leading-snug" x-text="c.nombre"></h3>
+              
+              <!-- Badge Rojo Solo si Debe -->
+              <template x-if="c.saldo_deudor > 0">
+                <span class="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold shrink-0">
+                  Debe <span x-text="formatearARS(c.saldo_deudor)"></span>
+                </span>
+              </template>
+            </div>
+
+            <!-- Dirección -->
+            <p class="text-[11px] text-zinc-600 flex items-center gap-1.5 mb-1">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-zinc-400 shrink-0"></i>
+              <span class="truncate" x-text="c.direccion || 'Sin dirección cargada'"></span>
+            </p>
+
+            <!-- Teléfono -->
+            <p class="text-[11px] text-zinc-600 flex items-center gap-1.5 font-mono mb-2">
+              <i data-lucide="phone" class="w-3.5 h-3.5 text-zinc-400 shrink-0"></i>
+              <span x-text="c.telefono || 'Sin teléfono'"></span>
+            </p>
+
+            <!-- Notas / Referencias -->
+            <div x-show="c.notas" class="text-[10px] text-zinc-500 bg-zinc-50 p-2 rounded-lg border border-zinc-100 line-clamp-2 mb-2" x-text="c.notas"></div>
+          </div>
+
+          <!-- Botones Operativos: GPS + WhatsApp Cero Rombos + Editar -->
+          <div class="mt-2 pt-2.5 border-t border-zinc-100 flex items-center justify-between gap-1.5">
+            
+            <div class="flex items-center gap-1.5">
+              <!-- Navegar con GPS Google Maps -->
+              <a :href="generarLinkGPS(c)" target="_blank"
+                 class="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-bold flex items-center gap-1 transition-colors"
+                 title="Abrir en Google Maps para navegar">
+                <i data-lucide="navigation" class="w-3.5 h-3.5 text-blue-600"></i>
+                <span>Cómo llegar</span>
+              </a>
+
+              <!-- WhatsApp en 1 toque (Cero Rombos) -->
+              <a :href="generarLinkWhatsApp(c)" target="_blank"
+                 class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center gap-1 transition-colors"
+                 title="Escribir por WhatsApp">
+                <i data-lucide="message-circle" class="w-3.5 h-3.5 text-emerald-600"></i>
+                <span>WhatsApp</span>
+              </a>
+            </div>
+
+            <!-- Editar -->
+            <button type="button" @click="abrirModalEditar(c)"
+                    class="p-1.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-600 cursor-pointer"
+                    title="Editar datos del cliente">
+              <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+            </button>
+
+          </div>
+
+        </div>
+      </template>
+
+      <div x-show="clientesFiltrados.length === 0" class="col-span-full py-12 text-center text-zinc-400 text-xs">
+        No se encontraron clientes con el criterio de búsqueda.
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Modal Crear / Editar Cliente -->
+  <div x-show="modalForm" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200"
+         @click.outside="modalForm = false">
+      
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-zinc-900 text-sm flex items-center gap-2">
+          <i data-lucide="user" class="w-4 h-4 text-amber-500"></i>
+          <span x-text="editando ? 'Editar Cliente' : 'Nuevo Cliente'"></span>
+        </h3>
+        <button type="button" @click="modalForm = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="guardarCliente()" class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nombre o Razón Social</label>
+          <input type="text" x-model="form.nombre" required placeholder="Ej: Kiosco Belgrano"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Teléfono</label>
+          <input type="tel" x-model="form.telefono" placeholder="Ej: 11 2345-6789"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Dirección / Localidad</label>
+          <input type="text" x-model="form.direccion" placeholder="Ej: Av. Rivadavia 4500"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Notas / Referencias</label>
+          <input type="text" x-model="form.notas" placeholder="Ej: Tocar timbre lateral, recibe Juan"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+
+        <div class="mt-5 flex gap-2 pt-2">
+          <button type="button" @click="modalForm = false"
+                  class="flex-1 py-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700 hover:bg-zinc-50">
+            Cancelar
+          </button>
+          <button type="submit" :disabled="cargando"
+                  class="flex-1 py-2.5 rounded-xl bg-slate-900 text-amber-400 text-xs font-bold hover:bg-slate-800 disabled:opacity-50">
+            <span x-text="cargando ? 'Guardando...' : 'Guardar'"></span>
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    function clientesCRM() {
+      return {
+        clientes: [],
+        filtro: '',
+        modalForm: false,
+        editando: false,
+        form: { id: null, nombre: '', telefono: '', direccion: '', notas: '' },
+        cargando: false,
+
+        async iniciar() {
+          await this.cargarClientes();
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async cargarClientes() {
+          try {
+            const res = await fetch('/api/clientes');
+            if (res.ok) {
+              this.clientes = await res.json();
+            }
+          } catch (e) {
+            console.warn('Cargando clientes locales:', e);
+            const clis = localStorage.getItem('crm_clientes');
+            if (clis) this.clientes = JSON.parse(clis);
+          }
+        },
+
+        get clientesFiltrados() {
+          const q = this.filtro.trim().toLowerCase();
+          if (!q) return this.clientes;
+          return this.clientes.filter(c =>
+            (c.nombre || '').toLowerCase().includes(q) ||
+            (c.direccion || '').toLowerCase().includes(q) ||
+            (c.telefono || '').toLowerCase().includes(q)
+          );
+        },
+
+        formatearARS(val) {
+          const num = Number(val) || 0;
+          return '$ ' + num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+
+        generarLinkGPS(c) {
+          if (c.lat && c.lng) {
+            return `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`;
+          }
+          const destino = encodeURIComponent((c.direccion || c.nombre) + ', Argentina');
+          return `https://www.google.com/maps/dir/?api=1&destination=${destino}`;
+        },
+
+        generarLinkWhatsApp(c) {
+          const tel = (c.telefono || '').replace(/\D/g, '');
+          const telLimpio = tel.startsWith('54') ? tel : (tel.startsWith('9') ? '54' + tel : '549' + tel);
+
+          // REGLA GEMINI: CERO ROMBOS - CERO EMOJIS EN WHATSAPP
+          let texto = '*AVISO DE VISITA / ESTADO*' + '%0A';
+          texto += '*' + (('{{ config.nombre_negocio }}' || 'Mini CRM')).toUpperCase() + '*%0A%0A';
+          texto += 'Hola *' + encodeURIComponent(c.nombre || 'Cliente') + '*, te contactamos para coordinar pedidos y entregas en tu zona.%0A';
+
+          if (c.saldo_deudor > 0) {
+            texto += '%0A*Recordatorio de saldo pendiente:* ' + encodeURIComponent(this.formatearARS(c.saldo_deudor)) + '%0A';
+            {% if config.alias_mp %}
+            texto += '*Alias de transferencia:* ' + encodeURIComponent('{{ config.alias_mp }}') + '%0A';
+            {% endif %}
+          }
+
+          texto += '%0A¿Que productos necesitas que te llevemos en la proxima vuelta?';
+          return 'https://api.whatsapp.com/send?phone=' + telLimpio + '&text=' + texto;
+        },
+
+        abrirModalNuevo() {
+          this.editando = false;
+          this.form = { id: null, nombre: '', telefono: '', direccion: '', notas: '' };
+          this.modalForm = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        abrirModalEditar(c) {
+          this.editando = true;
+          this.form = { ...c };
+          this.modalForm = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async guardarCliente() {
+          if (!this.form.nombre.trim()) return;
+          this.cargando = true;
+
+          try {
+            const url = this.editando ? `/api/clientes/${this.form.id}` : '/api/clientes';
+            const method = this.editando ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+              method,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.form)
+            });
+
+            if (res.ok) {
+              await this.cargarClientes();
+              this.modalForm = false;
+            } else {
+              alert('Error al guardar cliente.');
+            }
+          } catch (e) {
+            alert('Error de conexión.');
+          } finally {
+            this.cargando = false;
+            this.$nextTick(() => lucide.createIcons());
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>

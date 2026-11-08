@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-zinc-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Configuración & Seguridad | {{ config.nombre_negocio }}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#09090b">
+  
+  <script src="/static/vendor/tailwind.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
+  <script src="/static/vendor/lucide.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="h-full flex flex-col antialiased text-zinc-900 bg-zinc-100"
+      x-data="configuracionCRM()" x-init="iniciar()">
+
+  <!-- Barra de Navegación -->
+  {% include "_nav.html" %}
+
+  <main class="flex-1 max-w-4xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8 space-y-5">
+    
+    <!-- Encabezado -->
+    <div>
+      <h2 class="text-base font-black text-zinc-900 tracking-tight">Configuración del Sistema</h2>
+      <p class="text-xs text-zinc-500 font-medium">Identidad del negocio, llaves maestras de rescate y copias de seguridad</p>
+    </div>
+
+    <!-- 1. Identidad y Cobro -->
+    <div class="bg-white rounded-2xl p-5 border border-zinc-200/90 shadow-xs">
+      <div class="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-100">
+        <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+          <i data-lucide="store" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h3 class="text-xs font-bold text-zinc-900 uppercase">Identidad & Cobro QR</h3>
+          <p class="text-[11px] text-zinc-500">Datos visibles en tickets, WhatsApp y transferencias</p>
+        </div>
+      </div>
+
+      <form @submit.prevent="guardarIdentidad()" class="space-y-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nombre del Negocio</label>
+            <input type="text" x-model="config.nombre_negocio" required
+                   class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Teléfono Principal</label>
+            <input type="tel" x-model="config.telefono_contacto"
+                   class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Alias de Mercado Pago / Banco</label>
+            <input type="text" x-model="config.alias_mp" placeholder="Ej: distri.sur.mp"
+                   class="w-full px-3 py-2 text-xs font-mono rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">CBU / CVU Bancario</label>
+            <input type="text" x-model="config.cbu_mp" placeholder="22 dígitos"
+                   class="w-full px-3 py-2 text-xs font-mono rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+          </div>
+        </div>
+
+        <div class="pt-2 flex justify-end">
+          <button type="submit" :disabled="guardandoIdentidad"
+                  class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-transform active:scale-95 shadow-xs cursor-pointer">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i>
+            <span x-text="guardandoIdentidad ? 'Guardando...' : 'Guardar Cambios'"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 2. Seguridad & Llave Maestra de Rescate -->
+    <div class="bg-white rounded-2xl p-5 border border-zinc-200/90 shadow-xs">
+      <div class="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-100">
+        <div class="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
+          <i data-lucide="shield-check" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h3 class="text-xs font-bold text-zinc-900 uppercase">Seguridad & Llave Maestra de Rescate</h3>
+          <p class="text-[11px] text-zinc-500">Recuperación sin internet ni email en caso de olvido de PIN</p>
+        </div>
+      </div>
+
+      <!-- Tarjeta Llave Maestra con 1-Click Copy -->
+      <div class="p-4 rounded-xl bg-amber-50 border border-amber-200 mb-4">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <span class="text-[11px] font-black uppercase text-amber-900 tracking-wide">Tu Llave Maestra de Rescate (SSOT)</span>
+            <p class="text-xs text-amber-800 mt-0.5">
+              Si olvidás tu PIN de Dueño o la app se bloquea, esta llave es lo único que te permite recuperarlo sin soporte técnico.
+            </p>
+          </div>
+          <button type="button" @click="copiarLlave()"
+                  class="px-3 py-1.5 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-900 text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <span x-text="llaveCopiada ? '¡Copiada!' : 'Copiar'"></span>
+          </button>
+        </div>
+        <div class="mt-2.5 p-2 bg-white rounded-lg border border-amber-300 font-mono font-black text-sm text-center text-zinc-900 tracking-wider select-all"
+             x-text="config.llave_maestra_rescate || 'RESCATE-CRM-0000'"></div>
+      </div>
+
+      <!-- Cambio de PINs -->
+      <form @submit.prevent="cambiarPins()" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nuevo PIN Dueño (4 a 6 dígitos)</label>
+          <input type="password" x-model="nuevoPinDueno" maxlength="6" inputmode="numeric" placeholder="••••"
+                 class="w-full px-3 py-2 text-xs font-mono text-center rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nuevo PIN Vendedor (4 a 6 dígitos)</label>
+          <input type="password" x-model="nuevoPinVendedor" maxlength="6" inputmode="numeric" placeholder="••••"
+                 class="w-full px-3 py-2 text-xs font-mono text-center rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+        <div class="sm:col-span-2 flex justify-between items-center pt-2">
+          <a href="/auditoria" class="text-xs text-zinc-500 hover:text-zinc-800 font-semibold flex items-center gap-1">
+            <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+            <span>Ver Registro de Auditoría y Seguridad</span>
+          </a>
+          <button type="submit" :disabled="!nuevoPinDueno && !nuevoPinVendedor"
+                  class="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-transform active:scale-95 shadow-xs cursor-pointer disabled:opacity-40">
+            <i data-lucide="key" class="w-3.5 h-3.5"></i>
+            <span>Actualizar PINs</span>
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- 3. Copias de Seguridad & Respaldo -->
+    <div class="bg-white rounded-2xl p-5 border border-zinc-200/90 shadow-xs">
+      <div class="flex items-center gap-2 mb-4 pb-3 border-b border-zinc-100">
+        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+          <i data-lucide="database" class="w-4 h-4"></i>
+        </div>
+        <div>
+          <h3 class="text-xs font-bold text-zinc-900 uppercase">Respaldos & Google Drive</h3>
+          <p class="text-[11px] text-zinc-500">Copias locales en 1 clic y sincronización de base de datos</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        <!-- Descargar Copia JSON -->
+        <a href="/api/backup/exportar" download
+           class="p-3.5 rounded-xl border border-zinc-200 hover:border-zinc-300 bg-zinc-50 hover:bg-white flex items-center gap-3 transition-colors group">
+          <div class="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+            <i data-lucide="download" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <span class="text-xs font-bold text-zinc-900 group-hover:text-emerald-700 block">Descargar Copia JSON</span>
+            <span class="text-[11px] text-zinc-500">Copia completa de clientes, pedidos y precios</span>
+          </div>
+        </a>
+
+        <!-- Exportar a Google Drive -->
+        <button type="button" @click="ejecutarRespaldoDrive()" :disabled="respaldandoDrive"
+                class="p-3.5 rounded-xl border border-zinc-200 hover:border-zinc-300 bg-zinc-50 hover:bg-white flex items-center gap-3 transition-colors text-left group cursor-pointer">
+          <div class="w-9 h-9 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center shrink-0">
+            <i data-lucide="cloud-upload" class="w-4 h-4" :class="respaldandoDrive ? 'animate-spin' : ''"></i>
+          </div>
+          <div>
+            <span class="text-xs font-bold text-zinc-900 group-hover:text-blue-700 block">
+              <span x-text="respaldandoDrive ? 'Respaldando...' : 'Respaldo en Google Drive'"></span>
+            </span>
+            <span class="text-[11px] text-zinc-500">Copia automática en tu carpeta local/cloud</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Restaurar Copia -->
+      <div class="p-4 rounded-xl bg-zinc-50 border border-zinc-200">
+        <h4 class="text-xs font-bold text-zinc-800 uppercase mb-1">Restaurar Copia de Seguridad</h4>
+        <p class="text-[11px] text-zinc-500 mb-2">Seleccioná un archivo JSON previamente exportado para recuperar tus datos:</p>
+        <div class="flex items-center gap-2">
+          <input type="file" id="archivoBackup" accept=".json"
+                 class="block w-full text-xs text-zinc-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-amber-400 hover:file:bg-slate-800">
+          <button type="button" @click="restaurarCopia()"
+                  class="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-900 text-white text-xs font-bold shrink-0 cursor-pointer">
+            Restaurar
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    function configuracionCRM() {
+      return {
+        config: {
+          nombre_negocio: '{{ config.nombre_negocio }}',
+          telefono_contacto: '{{ config.telefono_contacto }}',
+          alias_mp: '{{ config.alias_mp }}',
+          cbu_mp: '{{ config.cbu_mp }}',
+          llave_maestra_rescate: '{{ config.llave_maestra_rescate }}'
+        },
+        guardandoIdentidad: false,
+        llaveCopiada: false,
+        nuevoPinDueno: '',
+        nuevoPinVendedor: '',
+        respaldandoDrive: false,
+
+        iniciar() {
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async copiarLlave() {
+          try {
+            await navigator.clipboard.writeText(this.config.llave_maestra_rescate);
+            this.llaveCopiada = true;
+            setTimeout(() => this.llaveCopiada = false, 2500);
+          } catch (e) {
+            alert('Llave: ' + this.config.llave_maestra_rescate);
+          }
+        },
+
+        async guardarIdentidad() {
+          this.guardandoIdentidad = true;
+          try {
+            const res = await fetch('/api/configuracion', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nombre_negocio: this.config.nombre_negocio,
+                telefono_contacto: this.config.telefono_contacto,
+                alias_mp: this.config.alias_mp,
+                cbu_mp: this.config.cbu_mp
+              })
+            });
+            if (res.ok) {
+              alert('Configuración guardada exitosamente.');
+            } else {
+              alert('Error al guardar configuración.');
+            }
+          } catch (e) {
+            alert('Error de conexión.');
+          } finally {
+            this.guardandoIdentidad = false;
+          }
+        },
+
+        async cambiarPins() {
+          const payload = {};
+          if (this.nuevoPinDueno) payload.pin_dueno = this.nuevoPinDueno;
+          if (this.nuevoPinVendedor) payload.pin_vendedor = this.nuevoPinVendedor;
+
+          try {
+            const res = await fetch('/api/seguridad/cambiar-pins', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+              alert('¡PINs actualizados con éxito!');
+              this.nuevoPinDueno = '';
+              this.nuevoPinVendedor = '';
+            } else {
+              alert('Error al actualizar PINs');
+            }
+          } catch (e) {
+            alert('Error de conexión');
+          }
+        },
+
+        async ejecutarRespaldoDrive() {
+          this.respaldandoDrive = true;
+          try {
+            const res = await fetch('/api/backup/drive', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+              alert('Respaldo completado con éxito:\n' + data.archivo);
+            } else {
+              alert('Error al respaldar en Drive: ' + (data.detail || 'Fallo'));
+            }
+          } catch (e) {
+            alert('Error al contactar el servidor');
+          } finally {
+            this.respaldandoDrive = false;
+          }
+        },
+
+        async restaurarCopia() {
+          const fileInput = document.getElementById('archivoBackup');
+          if (!fileInput.files.length) {
+            alert('Por favor seleccioná un archivo JSON.');
+            return;
+          }
+          if (!confirm('¡ATENCIÓN! Restaurar una copia sobrescribirá los datos actuales. ¿Deseás continuar?')) {
+            return;
+          }
+
+          const file = fileInput.files[0];
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            try {
+              const json = JSON.parse(e.target.result);
+              const res = await fetch('/api/backup/restaurar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(json)
+              });
+              if (res.ok) {
+                alert('¡Datos restaurados con éxito! La página se actualizará.');
+                window.location.reload();
+              } else {
+                alert('El archivo no tiene el formato válido de respaldo.');
+              }
+            } catch (err) {
+              alert('Error al leer el archivo JSON.');
+            }
+          };
+          reader.readAsText(file);
+        }
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-zinc-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Precios & Catálogo | {{ config.nombre_negocio }}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#09090b">
+  
+  <script src="/static/vendor/tailwind.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
+  <script src="/static/vendor/lucide.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="h-full flex flex-col antialiased text-zinc-900 bg-zinc-100"
+      x-data="catalogoCRM()" x-init="iniciar()">
+
+  <!-- Barra de Navegación -->
+  {% include "_nav.html" %}
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
+    
+    <!-- Encabezado y Acciones -->
+    <div class="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+        <h2 class="text-base font-black text-zinc-900 tracking-tight">Lista de Precios & Catálogo</h2>
+        <p class="text-xs text-zinc-500 font-medium">Gestión de tarifas mayoristas y minoristas para la preventa</p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div class="relative flex-1 sm:w-64">
+          <i data-lucide="search" class="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input type="text" x-model="filtro" placeholder="Buscar producto o código..."
+                 class="w-full pl-9 pr-3 py-2 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+
+        <button type="button" @click="abrirModalNuevo()"
+                class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-transform active:scale-95 shadow-sm cursor-pointer shrink-0">
+          <i data-lucide="plus" class="w-4 h-4"></i>
+          <span>Nuevo Ítem</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Tabla / Lista de Productos -->
+    <div class="bg-white rounded-2xl border border-zinc-200/90 shadow-xs overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs divide-y divide-zinc-200">
+          <thead class="bg-zinc-50 text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
+            <tr>
+              <th class="py-3 px-4">Código / Ítem</th>
+              <th class="py-3 px-4">Categoría</th>
+              <th class="py-3 px-4 text-right">Precio Minorista</th>
+              <th class="py-3 px-4 text-right">Precio Mayorista</th>
+              <th class="py-3 px-4 text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-100 font-medium text-zinc-800">
+            <template x-for="p in productosFiltrados" :key="p.id">
+              <tr class="hover:bg-zinc-50/70 transition-colors">
+                <td class="py-3 px-4">
+                  <div class="font-bold text-zinc-900" x-text="p.nombre"></div>
+                  <div class="text-[11px] text-zinc-400 font-mono" x-text="p.codigo || 'S/C'"></div>
+                </td>
+                <td class="py-3 px-4">
+                  <span class="px-2 py-0.5 rounded-lg bg-zinc-100 text-zinc-700 text-[11px] font-semibold"
+                        x-text="p.categoria || 'General'"></span>
+                </td>
+                <td class="py-3 px-4 text-right font-mono font-bold text-zinc-900"
+                    x-text="formatearARS(p.precio_unitario)"></td>
+                <td class="py-3 px-4 text-right font-mono font-bold text-emerald-700"
+                    x-text="formatearARS(p.precio_mayorista || p.precio_unitario)"></td>
+                <td class="py-3 px-4 text-center">
+                  <div class="flex items-center justify-center gap-1">
+                    <button type="button" @click="abrirModalEditar(p)"
+                            class="p-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 text-zinc-600 border border-zinc-200 cursor-pointer"
+                            title="Editar">
+                      <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button type="button" @click="eliminarProducto(p.id)"
+                            class="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 cursor-pointer"
+                            title="Eliminar">
+                      <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <div x-show="productosFiltrados.length === 0" class="py-12 text-center text-zinc-400 text-xs">
+        No se encontraron productos en el catálogo.
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Modal Crear / Editar Ítem -->
+  <div x-show="modalForm" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200"
+         @click.outside="modalForm = false">
+      
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-zinc-900 text-sm flex items-center gap-2">
+          <i data-lucide="package" class="w-4 h-4 text-amber-500"></i>
+          <span x-text="editando ? 'Editar Ítem' : 'Nuevo Ítem'"></span>
+        </h3>
+        <button type="button" @click="modalForm = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form @submit.prevent="guardarItem()" class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nombre del Producto / Servicio</label>
+          <input type="text" x-model="form.nombre" required placeholder="Ej: Harina 000 x 25kg"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Código</label>
+            <input type="text" x-model="form.codigo" placeholder="Ej: HAR-001"
+                   class="w-full px-3 py-2 text-xs font-mono rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900 uppercase">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Categoría</label>
+            <input type="text" x-model="form.categoria" placeholder="Ej: Alimentos"
+                   class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Precio Minorista ($)</label>
+            <input type="number" step="any" x-model.number="form.precio_unitario" required placeholder="0.00"
+                   class="w-full px-3 py-2 text-xs font-mono font-bold rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Precio Mayorista ($)</label>
+            <input type="number" step="any" x-model.number="form.precio_mayorista" placeholder="0.00"
+                   class="w-full px-3 py-2 text-xs font-mono font-bold rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+          </div>
+        </div>
+
+        <div class="mt-5 flex gap-2 pt-2">
+          <button type="button" @click="modalForm = false"
+                  class="flex-1 py-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700 hover:bg-zinc-50">
+            Cancelar
+          </button>
+          <button type="submit" :disabled="cargando"
+                  class="flex-1 py-2.5 rounded-xl bg-slate-900 text-amber-400 text-xs font-bold hover:bg-slate-800 disabled:opacity-50">
+            <span x-text="cargando ? 'Guardando...' : 'Guardar'"></span>
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    function catalogoCRM() {
+      return {
+        productos: [],
+        filtro: '',
+        modalForm: false,
+        editando: false,
+        form: { id: null, codigo: '', nombre: '', categoria: 'General', precio_unitario: 0, precio_mayorista: 0 },
+        cargando: false,
+
+        async iniciar() {
+          await this.cargarCatalogo();
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async cargarCatalogo() {
+          try {
+            const res = await fetch('/api/catalogo');
+            if (res.ok) {
+              this.productos = await res.json();
+            }
+          } catch (e) {
+            console.warn('Cargando catálogo local:', e);
+            const prods = localStorage.getItem('crm_productos');
+            if (prods) this.productos = JSON.parse(prods);
+          }
+        },
+
+        get productosFiltrados() {
+          const q = this.filtro.trim().toLowerCase();
+          if (!q) return this.productos;
+          return this.productos.filter(p =>
+            (p.nombre || '').toLowerCase().includes(q) ||
+            (p.codigo || '').toLowerCase().includes(q) ||
+            (p.categoria || '').toLowerCase().includes(q)
+          );
+        },
+
+        formatearARS(val) {
+          const num = Number(val) || 0;
+          return '$ ' + num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+
+        abrirModalNuevo() {
+          this.editando = false;
+          this.form = { id: null, codigo: '', nombre: '', categoria: 'General', precio_unitario: 0, precio_mayorista: 0 };
+          this.modalForm = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        abrirModalEditar(p) {
+          this.editando = true;
+          this.form = { ...p };
+          this.modalForm = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async guardarItem() {
+          if (!this.form.nombre.trim()) return;
+          this.cargando = true;
+
+          try {
+            const url = this.editando ? `/api/catalogo/${this.form.id}` : '/api/catalogo';
+            const method = this.editando ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+              method,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.form)
+            });
+
+            if (res.ok) {
+              await this.cargarCatalogo();
+              this.modalForm = false;
+            } else {
+              alert('Error al guardar producto');
+            }
+          } catch (e) {
+            alert('Error de conexión');
+          } finally {
+            this.cargando = false;
+            this.$nextTick(() => lucide.createIcons());
+          }
+        },
+
+        async eliminarProducto(id) {
+          if (!confirm('¿Seguro que deseás eliminar este producto?')) return;
+          try {
+            const res = await fetch(`/api/catalogo/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+              await this.cargarCatalogo();
+            }
+          } catch (e) {
+            alert('Error al eliminar');
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-zinc-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Tomar Pedido | {{ config.nombre_negocio }}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#09090b">
+  
+  <script src="/static/vendor/tailwind.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
+  <script src="/static/vendor/lucide.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="h-full flex flex-col antialiased text-zinc-900 bg-zinc-100"
+      x-data="tomaPedidoCRM()" x-init="iniciar()">
+
+  <!-- Barra de Navegación -->
+  {% include "_nav.html" %}
+
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
+    
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      
+      <!-- Columna Izquierda: Selección de Cliente y Catálogo de Productos (8 cols) -->
+      <div class="lg:col-span-7 space-y-4">
+        
+        <!-- Tarjeta de Selección / Alta Rápida de Cliente -->
+        <div class="bg-white rounded-2xl p-4 border border-zinc-200/90 shadow-xs">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xs font-bold text-zinc-800 uppercase tracking-wide flex items-center gap-1.5">
+              <i data-lucide="user-check" class="w-4 h-4 text-amber-500"></i>
+              <span>Cliente</span>
+            </h2>
+            <button type="button" @click="mostrarModalNuevoCliente = true"
+                    class="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer">
+              <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+              <span>+ Nuevo Cliente</span>
+            </button>
+          </div>
+
+          <div class="relative">
+            <select x-model="clienteSeleccionadoId" @change="cambiarCliente()"
+                    class="w-full px-3 py-2.5 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-800 focus:outline-none focus:ring-2 focus:ring-slate-900">
+              <option value="">-- Seleccionar Cliente de la Ruta --</option>
+              <template x-for="c in clientes" :key="c.id">
+                <option :value="c.id" x-text="c.nombre + (c.saldo_deudor > 0 ? ' [DEUDA: ' + formatearARS(c.saldo_deudor) + ']' : '')"></option>
+              </template>
+            </select>
+          </div>
+
+          <!-- Alerta de Deuda Pendiente del Cliente (solo si debe) -->
+          <template x-if="clienteActual && clienteActual.saldo_deudor > 0">
+            <div class="mt-2.5 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between">
+              <div class="flex items-center gap-1.5 font-bold">
+                <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600"></i>
+                <span>Cliente con saldo pendiente:</span>
+              </div>
+              <span class="font-mono font-black" x-text="formatearARS(clienteActual.saldo_deudor)"></span>
+            </div>
+          </template>
+        </div>
+
+        <!-- Buscador de Productos y Selector Mayorista / Minorista -->
+        <div class="bg-white rounded-2xl p-4 border border-zinc-200/90 shadow-xs">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <div class="flex-1 relative">
+              <i data-lucide="search" class="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" x-model="filtroProducto" placeholder="Buscar producto o servicio..."
+                     class="w-full pl-9 pr-3 py-2 bg-zinc-50 rounded-xl border border-zinc-200 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-900">
+            </div>
+
+            <!-- Toggle Mayorista / Minorista -->
+            <div class="flex items-center gap-1 bg-zinc-100 p-1 rounded-xl self-start sm:self-auto">
+              <button type="button" @click="tipoTarifa = 'minorista'"
+                      :class="tipoTarifa === 'minorista' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-500 hover:text-zinc-900'"
+                      class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">
+                Minorista
+              </button>
+              <button type="button" @click="tipoTarifa = 'mayorista'"
+                      :class="tipoTarifa === 'mayorista' ? 'bg-slate-900 text-amber-400 shadow-xs' : 'text-zinc-500 hover:text-zinc-900'"
+                      class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">
+                Mayorista
+              </button>
+            </div>
+          </div>
+
+          <!-- Grilla de Productos / Ítems con Botones Grandes + / - -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[500px] overflow-y-auto pr-1">
+            <template x-for="p in productosFiltrados" :key="p.id">
+              <div class="p-3 rounded-xl border border-zinc-200 hover:border-zinc-300 bg-white flex flex-col justify-between transition-colors shadow-2xs">
+                <div class="mb-2">
+                  <div class="flex justify-between items-start gap-1">
+                    <h3 class="text-xs font-bold text-zinc-900 leading-tight" x-text="p.nombre"></h3>
+                    <span class="text-[10px] text-zinc-400 font-mono" x-text="p.codigo || ''"></span>
+                  </div>
+                  <p class="text-[11px] text-zinc-500 mt-0.5 line-clamp-1" x-text="p.descripcion || p.categoria"></p>
+                </div>
+
+                <div class="flex items-center justify-between pt-2 border-t border-zinc-100">
+                  <div>
+                    <span class="text-[10px] text-zinc-400 font-semibold block leading-none" x-text="tipoTarifa === 'mayorista' ? 'MAYORISTA' : 'UNITARIO'"></span>
+                    <span class="text-xs font-black text-slate-900 font-mono"
+                          x-text="formatearARS(tipoTarifa === 'mayorista' ? (p.precio_mayorista || p.precio_unitario) : p.precio_unitario)"></span>
+                  </div>
+
+                  <!-- Botones Táctiles para Incrementar / Decrementar -->
+                  <div class="flex items-center gap-1.5 bg-zinc-100 p-1 rounded-xl">
+                    <button type="button" @click="restarItem(p)"
+                            class="w-7 h-7 rounded-lg bg-white hover:bg-zinc-200 border border-zinc-200 text-zinc-800 font-black text-sm flex items-center justify-center active:scale-95 transition-transform">
+                      -
+                    </button>
+                    <span class="w-7 text-center font-mono font-bold text-xs" x-text="obtenerCantidad(p.id)"></span>
+                    <button type="button" @click="sumarItem(p)"
+                            class="w-7 h-7 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-400 font-black text-sm flex items-center justify-center active:scale-95 transition-transform">
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Columna Derecha: Canasta del Pedido & Cobro (5 cols) -->
+      <div class="lg:col-span-5 space-y-4">
+        
+        <div class="bg-white rounded-2xl p-4 sm:p-5 border border-zinc-200/90 shadow-xs sticky top-20">
+          
+          <div class="flex items-center justify-between pb-3 border-b border-zinc-100">
+            <h2 class="text-xs font-bold text-zinc-800 uppercase tracking-wide flex items-center gap-1.5">
+              <i data-lucide="shopping-bag" class="w-4 h-4 text-emerald-600"></i>
+              <span>Resumen del Pedido</span>
+            </h2>
+            <button type="button" @click="vaciarCanasta()" x-show="canasta.length > 0"
+                    class="text-[11px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer">
+              Vaciar
+            </button>
+          </div>
+
+          <!-- Lista de Ítems en la Canasta -->
+          <div class="py-3 max-h-60 overflow-y-auto divide-y divide-zinc-100 space-y-2">
+            <template x-for="item in canasta" :key="item.producto_id">
+              <div class="pt-2 flex items-center justify-between text-xs">
+                <div class="flex-1 pr-2">
+                  <div class="font-bold text-zinc-800 leading-tight" x-text="item.nombre"></div>
+                  <div class="text-[11px] text-zinc-500 font-mono">
+                    <span x-text="item.cantidad"></span> x <span x-text="formatearARS(item.precio_unitario)"></span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="font-mono font-bold text-zinc-900" x-text="formatearARS(item.subtotal)"></span>
+                  <button type="button" @click="eliminarDeCanasta(item.producto_id)"
+                          class="text-zinc-400 hover:text-rose-600 p-1">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <div x-show="canasta.length === 0" class="text-center py-8 text-zinc-400 text-xs">
+              No hay productos seleccionados.<br>Hacé clic en <strong>+</strong> para agregarlos.
+            </div>
+          </div>
+
+          <!-- Totalizador ARS -->
+          <div class="pt-3 border-t border-zinc-200 space-y-2">
+            <div class="flex justify-between items-center text-sm font-bold text-zinc-800">
+              <span>TOTAL PEDIDO:</span>
+              <span class="font-mono text-base font-black text-slate-900" x-text="formatearARS(totalCanasta)"></span>
+            </div>
+
+            <!-- Monto Cobrado en Mano / Transferencia -->
+            <div class="grid grid-cols-2 gap-2 pt-2">
+              <div>
+                <label class="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Monto Cobrado ($)</label>
+                <input type="number" step="any" x-model.number="montoCobrado" placeholder="0.00"
+                       class="w-full px-2.5 py-1.5 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-mono font-bold text-zinc-900">
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Forma de Pago</label>
+                <select x-model="metodoPago"
+                        class="w-full px-2.5 py-1.5 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-800">
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia QR</option>
+                  <option value="cuenta_corriente">Cuenta Corriente</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Saldo que Queda Debiendo -->
+            <div class="flex justify-between items-center text-xs pt-1">
+              <span class="text-zinc-500 font-medium">Saldo Pendiente:</span>
+              <span class="font-mono font-bold" :class="saldoPendienteCalculado > 0 ? 'text-rose-600' : 'text-zinc-700'"
+                    x-text="formatearARS(saldoPendienteCalculado)"></span>
+            </div>
+
+            <!-- Observaciones del Pedido -->
+            <div>
+              <input type="text" x-model="observaciones" placeholder="Observaciones / Horario de entrega..."
+                     class="w-full px-3 py-2 bg-zinc-50 rounded-xl border border-zinc-200 text-xs text-zinc-800 placeholder-zinc-400">
+            </div>
+
+            <!-- Botón Guardar Pedido -->
+            <button type="button" @click="guardarPedido()" :disabled="canasta.length === 0 || guardando"
+                    class="w-full mt-3 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs uppercase tracking-wider shadow-md transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer">
+              <i data-lucide="check-circle" class="w-4 h-4"></i>
+              <span x-text="guardando ? 'Guardando...' : 'Confirmar Pedido'"></span>
+            </button>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Modal Nuevo Cliente Rápido -->
+  <div x-show="mostrarModalNuevoCliente" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200"
+         @click.outside="mostrarModalNuevoCliente = false">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-zinc-900 text-sm flex items-center gap-2">
+          <i data-lucide="user-plus" class="w-4 h-4 text-amber-500"></i>
+          <span>Alta Rápida de Cliente</span>
+        </h3>
+        <button type="button" @click="mostrarModalNuevoCliente = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nombre o Razón Social</label>
+          <input type="text" x-model="nuevoCliente.nombre" placeholder="Ej: Almacén San Cayetano"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Teléfono WhatsApp</label>
+          <input type="tel" x-model="nuevoCliente.telefono" placeholder="Ej: 11 2345-6789"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Dirección / Localidad</label>
+          <input type="text" x-model="nuevoCliente.direccion" placeholder="Ej: Av. San Martín 1234"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+      </div>
+
+      <div class="mt-5 flex gap-2">
+        <button type="button" @click="mostrarModalNuevoCliente = false"
+                class="flex-1 py-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700 hover:bg-zinc-50">
+          Cancelar
+        </button>
+        <button type="button" @click="guardarNuevoCliente()" :disabled="!nuevoCliente.nombre.trim()"
+                class="flex-1 py-2.5 rounded-xl bg-slate-900 text-amber-400 text-xs font-bold hover:bg-slate-800 disabled:opacity-50">
+          Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function tomaPedidoCRM() {
+      return {
+        clientes: [],
+        productos: [],
+        clienteSeleccionadoId: '',
+        clienteActual: null,
+        tipoTarifa: 'minorista',
+        filtroProducto: '',
+        canasta: [],
+        montoCobrado: 0,
+        metodoPago: 'efectivo',
+        observaciones: '',
+        guardando: false,
+
+        mostrarModalNuevoCliente: false,
+        nuevoCliente: { nombre: '', telefono: '', direccion: '' },
+
+        async iniciar() {
+          await this.cargarDatos();
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async cargarDatos() {
+          try {
+            const [resCli, resProd] = await Promise.all([
+              fetch('/api/clientes'),
+              fetch('/api/catalogo')
+            ]);
+            if (resCli.ok) this.clientes = await resCli.json();
+            if (resProd.ok) this.productos = await resProd.json();
+          } catch (e) {
+            console.warn('Error al cargar datos remotos, usando local:', e);
+            const clis = localStorage.getItem('crm_clientes');
+            const prods = localStorage.getItem('crm_productos');
+            if (clis) this.clientes = JSON.parse(clis);
+            if (prods) this.productos = JSON.parse(prods);
+          }
+        },
+
+        cambiarCliente() {
+          this.clienteActual = this.clientes.find(c => c.id == this.clienteSeleccionadoId) || null;
+        },
+
+        get productosFiltrados() {
+          const q = this.filtroProducto.trim().toLowerCase();
+          if (!q) return this.productos;
+          return this.productos.filter(p =>
+            (p.nombre || '').toLowerCase().includes(q) ||
+            (p.codigo || '').toLowerCase().includes(q) ||
+            (p.categoria || '').toLowerCase().includes(q)
+          );
+        },
+
+        obtenerCantidad(prodId) {
+          const it = this.canasta.find(i => i.producto_id == prodId);
+          return it ? it.cantidad : 0;
+        },
+
+        sumarItem(p) {
+          const precio = this.tipoTarifa === 'mayorista' ? (p.precio_mayorista || p.precio_unitario) : p.precio_unitario;
+          const existente = this.canasta.find(i => i.producto_id == p.id);
+          if (existente) {
+            existente.cantidad++;
+            existente.subtotal = existente.cantidad * existente.precio_unitario;
+          } else {
+            this.canasta.push({
+              producto_id: p.id,
+              nombre: p.nombre,
+              precio_unitario: precio,
+              cantidad: 1,
+              subtotal: precio
+            });
+          }
+        },
+
+        restarItem(p) {
+          const idx = this.canasta.findIndex(i => i.producto_id == p.id);
+          if (idx !== -1) {
+            if (this.canasta[idx].cantidad > 1) {
+              this.canasta[idx].cantidad--;
+              this.canasta[idx].subtotal = this.canasta[idx].cantidad * this.canasta[idx].precio_unitario;
+            } else {
+              this.canasta.splice(idx, 1);
+            }
+          }
+        },
+
+        eliminarDeCanasta(prodId) {
+          this.canasta = this.canasta.filter(i => i.producto_id != prodId);
+        },
+
+        vaciarCanasta() {
+          this.canasta = [];
+          this.montoCobrado = 0;
+        },
+
+        get totalCanasta() {
+          return this.canasta.reduce((acc, i) => acc + (i.subtotal || 0), 0);
+        },
+
+        get saldoPendienteCalculado() {
+          const total = this.totalCanasta;
+          const cobrado = Number(this.montoCobrado) || 0;
+          return Math.max(0, total - cobrado);
+        },
+
+        formatearARS(val) {
+          const num = Number(val) || 0;
+          return '$ ' + num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+
+        async guardarNuevoCliente() {
+          if (!this.nuevoCliente.nombre.trim()) return;
+          try {
+            const res = await fetch('/api/clientes', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.nuevoCliente)
+            });
+            if (res.ok) {
+              const cliGuardado = await res.json();
+              this.clientes.unshift(cliGuardado);
+              this.clienteSeleccionadoId = cliGuardado.id;
+              this.cambiarCliente();
+              this.mostrarModalNuevoCliente = false;
+              this.nuevoCliente = { nombre: '', telefono: '', direccion: '' };
+            }
+          } catch (e) {
+            alert('Error al registrar cliente');
+          }
+        },
+
+        async guardarPedido() {
+          if (!this.clienteSeleccionadoId) {
+            alert('Por favor, seleccioná un cliente para el pedido.');
+            return;
+          }
+          if (this.canasta.length === 0) {
+            alert('La canasta está vacía.');
+            return;
+          }
+
+          this.guardando = true;
+          const payload = {
+            cliente_id: parseInt(this.clienteSeleccionadoId, 10),
+            items: this.canasta,
+            total: this.totalCanasta,
+            monto_cobrado: Number(this.montoCobrado) || 0,
+            saldo_pendiente: this.saldoPendienteCalculado,
+            metodo_pago: this.metodoPago,
+            tipo_tarifa: this.tipoTarifa,
+            observaciones: this.observaciones
+          };
+
+          try {
+            const res = await fetch('/api/pedidos', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+
+            if (!res.ok) {
+              const err = await res.json();
+              alert(err.detail || 'Error al guardar pedido');
+              return;
+            }
+
+            const guardado = await res.json();
+            alert('¡Pedido guardado con éxito!');
+            window.location.href = '/';
+
+          } catch (e) {
+            alert('No se pudo conectar con el servidor.');
+          } finally {
+            this.guardando = false;
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>

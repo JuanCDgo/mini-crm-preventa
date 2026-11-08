@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-zinc-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Acceso Seguro | {{ config.nombre_negocio or 'Mini CRM Móvil' }}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#09090b">
+  
+  <script src="/static/vendor/tailwind.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
+  <script src="/static/vendor/lucide.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="h-full flex items-center justify-center p-4 antialiased text-zinc-900 bg-zinc-100"
+      x-data="loginCRM()" x-init="iniciar()">
+
+  <div class="w-full max-w-sm">
+
+    <!-- Tarjeta Principal -->
+    <div class="bg-white rounded-3xl border border-zinc-200/80 shadow-xl p-7 relative overflow-hidden">
+      
+      <!-- Encabezado / Identidad -->
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-slate-900 text-amber-400 flex items-center justify-center font-bold text-xl shadow-md mb-3">
+          <i data-lucide="funnel" class="w-7 h-7"></i>
+        </div>
+        <h1 class="text-xl font-black text-zinc-900 tracking-tight">
+          {{ config.nombre_negocio or 'Mini CRM Móvil' }}
+        </h1>
+        <p class="text-xs text-zinc-500 font-medium mt-1">
+          Control de Preventa, Clientes y Seguimiento
+        </p>
+      </div>
+
+      <!-- Banner de Bloqueo Temporal (Rate Limiting 120s) -->
+      <div x-show="bloqueado" x-cloak
+           class="mb-5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+        <div class="flex items-center gap-2.5 font-bold mb-1">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-rose-600 shrink-0"></i>
+          <span>Acceso temporalmente bloqueado</span>
+        </div>
+        <p class="text-rose-700 leading-relaxed mb-2">
+          Demasiados intentos fallidos. Por seguridad, el sistema se bloqueó temporalmente.
+        </p>
+        <div class="text-center py-2 px-3 bg-white/80 rounded-xl border border-rose-200 font-mono font-black text-base text-rose-700">
+          Reintento en: <span x-text="segundosRestantes + 's'"></span>
+        </div>
+      </div>
+
+      <!-- Mensaje de Error Normal -->
+      <div x-show="error && !bloqueado" x-cloak
+           class="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0"></i>
+        <span x-text="error"></span>
+      </div>
+
+      <!-- Formulario de Acceso -->
+      <form @submit.prevent="ingresar()" class="space-y-4">
+        
+        <!-- Selección de Usuario -->
+        <div>
+          <label class="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wide">
+            Usuario
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="rol = 'dueno'"
+                    :class="rol === 'dueno' ? 'bg-slate-900 text-amber-400 border-slate-900 shadow-sm' : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'"
+                    class="py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all">
+              <i data-lucide="crown" class="w-3.5 h-3.5"></i>
+              <span>Dueño</span>
+            </button>
+            <button type="button" @click="rol = 'vendedor'"
+                    :class="rol === 'vendedor' ? 'bg-slate-900 text-amber-400 border-slate-900 shadow-sm' : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'"
+                    class="py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all">
+              <i data-lucide="user" class="w-3.5 h-3.5"></i>
+              <span>Vendedor</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Campo PIN -->
+        <div>
+          <label for="pin" class="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wide">
+            PIN de Seguridad (4 a 6 dígitos)
+          </label>
+          <div class="relative">
+            <input :type="mostrarPin ? 'text' : 'password'" id="pin" x-model="pin" maxlength="6" inputmode="numeric"
+                   :disabled="bloqueado"
+                   placeholder="••••"
+                   required
+                   class="w-full pl-4 pr-11 py-3 text-center text-xl font-mono tracking-widest rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-slate-900 disabled:bg-zinc-100 disabled:cursor-not-allowed">
+            <button type="button" @click="mostrarPin = !mostrarPin"
+                    tabindex="-1"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600">
+              <i :data-lucide="mostrarPin ? 'eye-off' : 'eye'" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Teclado Numérico Rápido para Táctil -->
+        <div class="grid grid-cols-3 gap-1.5 pt-1">
+          <template x-for="n in [1,2,3,4,5,6,7,8,9]">
+            <button type="button" @click="agregarDigito(n)" :disabled="bloqueado"
+                    class="py-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-sm font-bold text-zinc-800 active:scale-95 transition-transform disabled:opacity-40">
+              <span x-text="n"></span>
+            </button>
+          </template>
+          <button type="button" @click="borrarUltimo()" :disabled="bloqueado"
+                  class="py-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-xs font-bold text-zinc-600 active:scale-95 transition-transform disabled:opacity-40">
+            Borrar
+          </button>
+          <button type="button" @click="agregarDigito(0)" :disabled="bloqueado"
+                  class="py-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-sm font-bold text-zinc-800 active:scale-95 transition-transform disabled:opacity-40">
+            0
+          </button>
+          <button type="button" @click="pin = ''" :disabled="bloqueado"
+                  class="py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-bold text-rose-700 active:scale-95 transition-transform disabled:opacity-40">
+            Limpiar
+          </button>
+        </div>
+
+        <!-- Botón Ingresar -->
+        <button type="submit" :disabled="bloqueado || cargando"
+                class="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-sm tracking-wide shadow-md transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+          <i data-lucide="log-in" class="w-4 h-4"></i>
+          <span x-text="cargando ? 'Verificando...' : 'Ingresar al CRM'"></span>
+        </button>
+      </form>
+
+      <!-- Pie / Recuperación con Llave Maestra -->
+      <div class="mt-6 pt-5 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
+        <button type="button" @click="modalRescate = true"
+                class="hover:text-zinc-900 font-medium flex items-center gap-1 transition-colors">
+          <i data-lucide="key" class="w-3.5 h-3.5"></i>
+          <span>Olvidé mi PIN</span>
+        </button>
+
+        <button type="button" @click="modalWiFi = true"
+                class="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 transition-colors">
+          <i data-lucide="wifi" class="w-3.5 h-3.5"></i>
+          <span>Conectar Celular</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Leyenda de Seguridad Offline / Local -->
+    <div class="text-center mt-5 text-[11px] text-zinc-400 font-medium flex items-center justify-center gap-1.5">
+      <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+      <span>100% Autónomo • Seguro en tu red y equipo</span>
+    </div>
+
+  </div>
+
+  <!-- Modal Recuperación con Llave Maestra (Sin Internet ni Email) -->
+  <div x-show="modalRescate" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200"
+         @click.outside="modalRescate = false">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2 text-zinc-900 font-bold text-sm">
+          <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center">
+            <i data-lucide="key" class="w-4 h-4"></i>
+          </div>
+          <span>Recuperar PIN de Dueño</span>
+        </div>
+        <button type="button" @click="modalRescate = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-zinc-600 mb-4 leading-relaxed">
+        Ingresá la <strong>Llave Maestra de Rescate</strong> que guardaste durante la configuración inicial para restablecer el PIN del Dueño.
+      </p>
+
+      <div x-show="errorRescate" x-cloak class="mb-3 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+        <span x-text="errorRescate"></span>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Llave Maestra de Rescate</label>
+          <input type="text" x-model="llaveRescate" placeholder="RESCATE-CRM-XXXX"
+                 class="w-full px-3 py-2 text-xs font-mono rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900 uppercase">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nuevo PIN de Dueño</label>
+          <input type="password" x-model="nuevoPinRescate" maxlength="6" inputmode="numeric" placeholder="4 a 6 dígitos"
+                 class="w-full px-3 py-2 text-xs font-mono rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900">
+        </div>
+      </div>
+
+      <div class="mt-5 flex gap-2">
+        <button type="button" @click="modalRescate = false"
+                class="flex-1 py-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700 hover:bg-zinc-50">
+          Cancelar
+        </button>
+        <button type="button" @click="ejecutarRescate()" :disabled="cargandoRescate"
+                class="flex-1 py-2.5 rounded-xl bg-slate-900 text-amber-400 text-xs font-bold hover:bg-slate-800 disabled:opacity-50">
+          <span x-text="cargandoRescate ? 'Validando...' : 'Restablecer'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Wi-Fi LAN para Celulares -->
+  <div x-show="modalWiFi" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200 text-center"
+         @click.outside="modalWiFi = false">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-zinc-900 text-sm flex items-center gap-2">
+          <i data-lucide="smartphone" class="w-4 h-4 text-blue-600"></i>
+          <span>Conectar desde el Celular</span>
+        </h3>
+        <button type="button" @click="modalWiFi = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="bg-zinc-50 p-4 rounded-2xl border border-zinc-200 mb-3 flex flex-col items-center">
+        <img :src="qrUrl" alt="QR Wi-Fi" class="w-44 h-44 object-contain rounded-lg">
+      </div>
+
+      <p class="text-xs text-zinc-600 mb-2">
+        Escanéalo con la cámara del celular conectado al mismo Wi-Fi:
+      </p>
+      <div class="p-2 bg-zinc-100 rounded-xl text-[11px] font-mono text-zinc-800 break-all select-all font-bold" x-text="lanUrl"></div>
+    </div>
+  </div>
+
+  <script>
+    function loginCRM() {
+      return {
+        rol: 'dueno',
+        pin: '',
+        mostrarPin: false,
+        error: '',
+        bloqueado: false,
+        segundosRestantes: 0,
+        timerInterval: null,
+        cargando: false,
+
+        modalRescate: false,
+        llaveRescate: '',
+        nuevoPinRescate: '',
+        errorRescate: '',
+        cargandoRescate: false,
+
+        modalWiFi: false,
+        qrUrl: '/api/wifi/qr',
+        lanUrl: 'http://localhost:8000',
+
+        iniciar() {
+          lucide.createIcons();
+          this.obtenerInfoRed();
+          this.verificarEstadoBloqueo();
+        },
+
+        agregarDigito(n) {
+          if (this.pin.length < 6) {
+            this.pin += n.toString();
+          }
+        },
+
+        borrarUltimo() {
+          this.pin = this.pin.slice(0, -1);
+        },
+
+        async obtenerInfoRed() {
+          try {
+            const res = await fetch('/api/wifi/info');
+            if (res.ok) {
+              const data = await res.json();
+              this.lanUrl = data.url_acceso || window.location.origin;
+            }
+          } catch (e) {
+            this.lanUrl = window.location.origin;
+          }
+        },
+
+        verificarEstadoBloqueo() {
+          // Si había un bloqueo guardado en localStorage
+          const expira = parseInt(localStorage.getItem('crm_bloqueo_expira') || '0', 10);
+          const ahora = Math.floor(Date.now() / 1000);
+          if (expira > ahora) {
+            this.iniciarCuentaRegresiva(expira - ahora);
+          }
+        },
+
+        iniciarCuentaRegresiva(segundos) {
+          this.bloqueado = true;
+          this.segundosRestantes = segundos;
+          if (this.timerInterval) clearInterval(this.timerInterval);
+
+          this.timerInterval = setInterval(() => {
+            this.segundosRestantes--;
+            if (this.segundosRestantes <= 0) {
+              clearInterval(this.timerInterval);
+              this.bloqueado = false;
+              this.error = '';
+              localStorage.removeItem('crm_bloqueo_expira');
+            }
+          }, 1000);
+        },
+
+        async ingresar() {
+          if (!this.pin || this.pin.length < 4) {
+            this.error = 'El PIN debe tener al menos 4 dígitos';
+            return;
+          }
+          this.cargando = true;
+          this.error = '';
+
+          try {
+            const res = await fetch('/api/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ rol: this.rol, pin: this.pin })
+            });
+
+            const data = await res.json();
+
+            if (res.status === 429 || data.bloqueado) {
+              const segs = data.segundos_restantes || 120;
+              const expira = Math.floor(Date.now() / 1000) + segs;
+              localStorage.setItem('crm_bloqueo_expira', expira.toString());
+              this.iniciarCuentaRegresiva(segs);
+              return;
+            }
+
+            if (!res.ok) {
+              this.error = data.detail || 'PIN incorrecto';
+              this.pin = '';
+              return;
+            }
+
+            // Guardar usuario en localStorage para Modo Offline y redirigir
+            localStorage.setItem('crm_sesion', JSON.stringify({
+              rol: data.rol,
+              usuario: data.usuario,
+              timestamp: Date.now()
+            }));
+
+            window.location.href = '/';
+
+          } catch (err) {
+            this.error = 'No se pudo conectar con el servidor local.';
+          } finally {
+            this.cargando = false;
+            this.$nextTick(() => lucide.createIcons());
+          }
+        },
+
+        async ejecutarRescate() {
+          if (!this.llaveRescate || !this.nuevoPinRescate) {
+            this.errorRescate = 'Completá todos los campos';
+            return;
+          }
+          if (this.nuevoPinRescate.length < 4) {
+            this.errorRescate = 'El nuevo PIN debe tener al menos 4 dígitos';
+            return;
+          }
+
+          this.cargandoRescate = true;
+          this.errorRescate = '';
+
+          try {
+            const res = await fetch('/api/seguridad/rescate-pin', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                llave_rescate: this.llaveRescate.trim(),
+                nuevo_pin: this.nuevoPinRescate
+              })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+              this.errorRescate = data.detail || 'Llave de rescate inválida';
+              return;
+            }
+
+            alert('PIN de Dueño restablecido con éxito. Ya podés ingresar.');
+            this.modalRescate = false;
+            this.rol = 'dueno';
+            this.pin = this.nuevoPinRescate;
+            this.bloqueado = false;
+            if (this.timerInterval) clearInterval(this.timerInterval);
+            localStorage.removeItem('crm_bloqueo_expira');
+
+          } catch (e) {
+            this.errorRescate = 'Error de conexión con el servidor.';
+          } finally {
+            this.cargandoRescate = false;
+            this.$nextTick(() => lucide.createIcons());
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>

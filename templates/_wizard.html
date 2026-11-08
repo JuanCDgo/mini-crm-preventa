@@ -1,0 +1,190 @@
+<!-- Asistente de Configuración Inicial (Setup Wizard) - Mini CRM Móvil & Preventa -->
+<div x-show="mostrarWizard" x-cloak
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+  <div class="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-zinc-200 text-left space-y-4 my-auto">
+    
+    <!-- Header del Wizard -->
+    <div class="flex items-center justify-between border-b border-zinc-100 pb-3">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+          <i data-lucide="sparkles" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h2 class="text-sm font-bold text-zinc-900 tracking-tight">Bienvenido a tu Mini CRM</h2>
+          <p class="text-[11px] text-zinc-500">Paso <span x-text="wizardPaso"></span> de 4</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1">
+        <template x-for="p in [1, 2, 3, 4]" :key="p">
+          <div class="w-6 h-1.5 rounded-full transition-colors"
+               :class="wizardPaso >= p ? 'bg-zinc-900' : 'bg-zinc-200'"></div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Error del Wizard -->
+    <div x-show="wizardError" x-text="wizardError" class="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs font-semibold"></div>
+
+    <!-- PASO 1: Elegir Perfil de Uso -->
+    <div x-show="wizardPaso === 1" class="space-y-3">
+      <div class="space-y-1">
+        <h3 class="text-sm font-bold text-zinc-900">¿Cómo vas a usar el CRM?</h3>
+        <p class="text-xs text-zinc-500">Esto configura automáticamente las columnas de tu tablero Kanban:</p>
+      </div>
+
+      <div class="grid grid-cols-1 gap-2.5 pt-1">
+        <!-- Perfil Preventista -->
+        <label class="p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3"
+               :class="wizardDatos.rubro_perfil === 'preventista' ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 hover:border-zinc-300'">
+          <input type="radio" value="preventista" x-model="wizardDatos.rubro_perfil" class="mt-1 text-zinc-900 focus:ring-zinc-900">
+          <div class="space-y-0.5">
+            <span class="block text-xs font-bold text-zinc-900 uppercase tracking-wide">📦 Preventista / Viajante / Reparto</span>
+            <p class="text-[11px] text-zinc-600 leading-relaxed">
+              Ideal para tomar pedidos en ruta y coordinar con el depósito:  
+              <em>Pedido Tomado ➔ En Depósito ➔ En Reparto ➔ Cobrado</em>.
+            </p>
+          </div>
+        </label>
+
+        <!-- Perfil Servicios / Presupuestos -->
+        <label class="p-3.5 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3"
+               :class="wizardDatos.rubro_perfil === 'servicios' ? 'border-zinc-900 bg-zinc-50' : 'border-zinc-200 hover:border-zinc-300'">
+          <input type="radio" value="servicios" x-model="wizardDatos.rubro_perfil" class="mt-1 text-zinc-900 focus:ring-zinc-900">
+          <div class="space-y-0.5">
+            <span class="block text-xs font-bold text-zinc-900 uppercase tracking-wide">💼 Servicios / Profesionales / Oficios</span>
+            <p class="text-[11px] text-zinc-600 leading-relaxed">
+              Ideal para enviar cotizaciones y hacer seguimiento:  
+              <em>Oportunidad ➔ Contactado ➔ Presupuesto Enviado ➔ Ganado</em>.
+            </p>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- PASO 2: Identidad del Negocio -->
+    <div x-show="wizardPaso === 2" class="space-y-3">
+      <div class="space-y-1">
+        <h3 class="text-sm font-bold text-zinc-900">Nombre e Identidad</h3>
+        <p class="text-xs text-zinc-500">Aparecerá en los pedidos y mensajes de WhatsApp:</p>
+      </div>
+
+      <div class="space-y-2.5 pt-1">
+        <div>
+          <label class="block text-[11px] font-semibold text-zinc-600 mb-1">Nombre de tu Negocio / Empresa *</label>
+          <input type="text" x-model="wizardDatos.nombre_negocio" placeholder="Ej: Distribuidora San Juan o Servicios Pro" required
+                 class="w-full px-3 py-2 rounded-xl border border-zinc-300 text-xs font-semibold focus:outline-none focus:border-zinc-900">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-semibold text-zinc-600 mb-1">Teléfono / WhatsApp</label>
+            <input type="tel" x-model="wizardDatos.telefono" placeholder="Ej: 3415551234"
+                   class="w-full px-3 py-2 rounded-xl border border-zinc-300 text-xs focus:outline-none focus:border-zinc-900">
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-zinc-600 mb-1">Dirección / Base</label>
+            <input type="text" x-model="wizardDatos.direccion" placeholder="Ej: Av. Mitre 123"
+                   class="w-full px-3 py-2 rounded-xl border border-zinc-300 text-xs focus:outline-none focus:border-zinc-900">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 3: Cobro y Transferencias -->
+    <div x-show="wizardPaso === 3" class="space-y-3">
+      <div class="space-y-1">
+        <h3 class="text-sm font-bold text-zinc-900">Datos para Señas y Pagos</h3>
+        <p class="text-xs text-zinc-500">Para incluir en el mensaje de WhatsApp cuando cobres por adelantado:</p>
+      </div>
+
+      <div class="space-y-2.5 pt-1">
+        <div>
+          <label class="block text-[11px] font-semibold text-zinc-600 mb-1">Alias CBU / CVU</label>
+          <input type="text" x-model="wizardDatos.alias" placeholder="Ej: mi.negocio.mp"
+                 class="w-full px-3 py-2 rounded-xl border border-zinc-300 font-mono text-xs font-bold text-zinc-900 focus:outline-none focus:border-zinc-900">
+        </div>
+        <div>
+          <label class="block text-[11px] font-semibold text-zinc-600 mb-1">CBU / CVU Numérico</label>
+          <input type="text" x-model="wizardDatos.cbu" placeholder="00000031000..."
+                 class="w-full px-3 py-2 rounded-xl border border-zinc-300 font-mono text-xs focus:outline-none focus:border-zinc-900">
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 4: Claves y Seguridad -->
+    <div x-show="wizardPaso === 4" class="space-y-3.5">
+      <div class="space-y-1">
+        <h3 class="text-sm font-bold text-zinc-900">Seguridad y Equipo</h3>
+        <p class="text-xs text-zinc-500">Definí el PIN del Dueño y los vendedores:</p>
+      </div>
+
+      <!-- PIN Dueño -->
+      <div class="p-3 bg-zinc-50 rounded-xl border border-zinc-200 space-y-2">
+        <span class="text-xs font-bold text-zinc-900 uppercase tracking-wide block">🔑 PIN del Dueño (4 números) *</span>
+        <div class="grid grid-cols-2 gap-2">
+          <input type="password" x-model="wizardDatos.pin_dueno" inputmode="numeric" maxlength="4" placeholder="Ej: 1234"
+                 class="w-full px-3 py-2 rounded-xl border border-zinc-300 font-bold text-center tracking-widest text-sm focus:outline-none focus:border-zinc-900">
+          <input type="password" x-model="wizardDatos.pin_dueno_conf" inputmode="numeric" maxlength="4" placeholder="Repetir PIN"
+                 class="w-full px-3 py-2 rounded-xl border border-zinc-300 font-bold text-center tracking-widest text-sm focus:outline-none focus:border-zinc-900">
+        </div>
+      </div>
+
+      <!-- Clave Maestra de Rescate -->
+      <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-1.5 text-left">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+            <i data-lucide="key" class="w-3.5 h-3.5 text-amber-700"></i>
+            Clave Maestra de Rescate
+          </span>
+          <span class="text-[10px] text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full font-semibold">Guardala</span>
+        </div>
+        <p class="text-[11px] text-zinc-600">
+          Si alguna vez olvidás el PIN de acceso o se bloquea el equipo, podrás restablecerlo con esta clave:
+        </p>
+        <div class="flex items-center gap-2">
+          <input type="text" x-model="wizardDatos.clave_maestra_rescate" readonly
+                 class="flex-1 px-3 py-1.5 rounded-lg border border-amber-300 bg-white font-mono text-xs font-bold text-amber-900 text-center select-all">
+          <button type="button" @click="copiarClaveWizard()"
+                  class="px-2.5 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold shrink-0 cursor-pointer">
+            <span x-text="claveCopiada ? '¡Copiada!' : 'Copiar'"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Vendedores de la calle -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-zinc-900 uppercase tracking-wide">👥 Vendedores / Preventistas</span>
+          <button type="button" @click="agregarVendedorWizard()" class="text-xs font-semibold text-blue-600 hover:text-blue-800">
+            + Agregar Vendedor
+          </button>
+        </div>
+        <div class="space-y-1.5 max-h-32 overflow-y-auto">
+          <template x-for="(v, idx) in wizardDatos.vendedores" :key="idx">
+            <div class="flex items-center gap-2">
+              <input type="text" x-model="v.nombre" placeholder="Nombre (ej: Franco)"
+                     class="flex-1 px-2.5 py-1.5 rounded-lg border border-zinc-300 text-xs font-medium">
+              <input type="text" x-model="v.pin" maxlength="4" inputmode="numeric" placeholder="PIN"
+                     class="w-20 px-2 py-1.5 rounded-lg border border-zinc-300 text-xs font-mono font-bold text-center">
+              <button type="button" @click="quitarVendedorWizard(idx)" x-show="wizardDatos.vendedores.length > 1"
+                      class="text-zinc-400 hover:text-red-500 font-bold px-1.5">✕</button>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- Botones de Navegación -->
+    <div class="flex items-center justify-between pt-3 border-t border-zinc-100">
+      <button type="button" @click="wizardAtras()" x-show="wizardPaso > 1"
+              class="px-4 py-2 rounded-xl border border-zinc-300 hover:bg-zinc-50 text-xs font-semibold text-zinc-700 transition-colors cursor-pointer">
+        Atrás
+      </button>
+      <div class="ml-auto">
+        <button type="button" @click="wizardSiguiente()" :disabled="guardandoWizard"
+                class="px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-bold transition-all shadow-md cursor-pointer flex items-center gap-1.5">
+          <span x-text="wizardPaso === 4 ? (guardandoWizard ? 'Guardando...' : 'Finalizar y Entrar') : 'Siguiente ➔'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

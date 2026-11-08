@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-zinc-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Auditoría de Seguridad | {{ config.nombre_negocio }}</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#09090b">
+  
+  <script src="/static/vendor/tailwind.js"></script>
+  <script defer src="/static/vendor/alpine.min.js"></script>
+  <script src="/static/vendor/lucide.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="h-full flex flex-col antialiased text-zinc-900 bg-zinc-100"
+      x-data="auditoriaCRM()" x-init="iniciar()">
+
+  <!-- Barra de Navegación -->
+  {% include "_nav.html" %}
+
+  <main class="flex-1 max-w-5xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8">
+    
+    <!-- Encabezado -->
+    <div class="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+        <h2 class="text-base font-black text-zinc-900 tracking-tight flex items-center gap-2">
+          <i data-lucide="shield-alert" class="w-5 h-5 text-rose-600"></i>
+          <span>Registro de Seguridad & Auditoría</span>
+        </h2>
+        <p class="text-xs text-zinc-500 font-medium">Historial de accesos, bloqueos de seguridad y operaciones críticas</p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button type="button" @click="cargarAlertas()"
+                class="px-3.5 py-2 rounded-xl bg-white border border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:bg-zinc-50 font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="cargando ? 'animate-spin' : ''"></i>
+          <span>Actualizar</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Lista de Eventos de Seguridad -->
+    <div class="bg-white rounded-2xl border border-zinc-200/90 shadow-xs overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs divide-y divide-zinc-200">
+          <thead class="bg-zinc-50 text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
+            <tr>
+              <th class="py-3 px-4">Fecha & Hora (GMT-3)</th>
+              <th class="py-3 px-4">Evento</th>
+              <th class="py-3 px-4">Detalle / IP</th>
+              <th class="py-3 px-4">Nivel</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-100 font-medium text-zinc-800">
+            <template x-for="item in alertas" :key="item.id || item.fecha">
+              <tr class="hover:bg-zinc-50/70 transition-colors">
+                <td class="py-3 px-4 font-mono text-zinc-600 whitespace-nowrap" x-text="item.fecha_formateada || item.fecha"></td>
+                <td class="py-3 px-4 font-bold text-zinc-900" x-text="item.tipo"></td>
+                <td class="py-3 px-4 text-zinc-600">
+                  <div x-text="item.detalle"></div>
+                  <div class="text-[10px] text-zinc-400 font-mono" x-show="item.ip">IP: <span x-text="item.ip"></span></div>
+                </td>
+                <td class="py-3 px-4">
+                  <span class="px-2 py-0.5 rounded-lg text-[10px] font-bold inline-flex items-center gap-1"
+                        :class="item.nivel === 'alto' ? 'bg-rose-100 text-rose-800' : (item.nivel === 'medio' ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-700')">
+                    <span class="w-1.5 h-1.5 rounded-full" :class="item.nivel === 'alto' ? 'bg-rose-500' : 'bg-amber-500'"></span>
+                    <span x-text="(item.nivel || 'info').toUpperCase()"></span>
+                  </span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <div x-show="alertas.length === 0" class="py-12 text-center text-zinc-400 text-xs">
+        Sin alertas de seguridad registradas. El sistema opera normalmente.
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    function auditoriaCRM() {
+      return {
+        alertas: [],
+        cargando: false,
+
+        async iniciar() {
+          await this.cargarAlertas();
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        async cargarAlertas() {
+          this.cargando = true;
+          try {
+            const res = await fetch('/api/seguridad/alertas');
+            if (res.ok) {
+              this.alertas = await res.json();
+            }
+          } catch (e) {
+            console.warn('Error al cargar auditoría');
+          } finally {
+            this.cargando = false;
+            this.$nextTick(() => lucide.createIcons());
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>
