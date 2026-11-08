@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-zinc-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Mini CRM Móvil & Preventa</title>
+  
+  <!-- Manifest & PWA -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#09090b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mini CRM">
+  <link rel="apple-touch-icon" href="./icon-192.svg">
+
+  <!-- Estilos y Scripts Locales / Fallback CDN si es necesario -->
+  <script src="./vendor/tailwind.js"></script>
+  <script defer src="./vendor/alpine.min.js"></script>
+  <script src="./vendor/lucide.min.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+    .kanban-col { min-height: calc(100vh - 240px); }
+  </style>
+</head>
+<body class="h-full flex flex-col antialiased text-zinc-900 bg-zinc-100 font-sans selection:bg-amber-100 selection:text-amber-900"
+      x-data="miniCRMPWA()" x-init="iniciar()">
+
+  <!-- ================= PANTALLA DE LOGIN CON RATE LIMITING ================= -->
+  <div x-show="!autenticado" x-cloak class="min-h-full flex items-center justify-center p-4">
+    <div class="w-full max-w-sm">
+      <div class="bg-white rounded-3xl border border-zinc-200/80 shadow-xl p-6 sm:p-7 relative overflow-hidden">
+        
+        <!-- Identidad -->
+        <div class="text-center mb-6">
+          <div class="w-14 h-14 mx-auto rounded-2xl bg-slate-900 text-amber-400 flex items-center justify-center font-bold text-xl shadow-md mb-3">
+            <i data-lucide="funnel" class="w-7 h-7"></i>
+          </div>
+          <h1 class="text-xl font-black text-zinc-900 tracking-tight" x-text="config.nombre_negocio || 'Mini CRM Móvil'"></h1>
+          <p class="text-xs text-zinc-500 font-medium mt-1">Control de Preventa, Clientes y Seguimiento</p>
+        </div>
+
+        <!-- Banner de Bloqueo Temporal (Anti-Fuerza Bruta 120s) -->
+        <div x-show="bloqueado" x-cloak
+             class="mb-5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+          <div class="flex items-center gap-2 font-bold mb-1">
+            <i data-lucide="shield-alert" class="w-4 h-4 text-rose-600 shrink-0"></i>
+            <span>Acceso Bloqueado Temporalmente</span>
+          </div>
+          <p class="text-rose-700 leading-relaxed mb-2">
+            5 intentos fallidos consecutivos. Por seguridad, el sistema se bloqueó por 2 minutos.
+          </p>
+          <div class="text-center py-2 px-3 bg-white/80 rounded-xl border border-rose-200 font-mono font-black text-base text-rose-700">
+            Reintento en: <span x-text="segundosBloqueo + 's'"></span>
+          </div>
+        </div>
+
+        <!-- Error normal de PIN incorrecto -->
+        <div x-show="errorLogin && !bloqueado" x-cloak
+             class="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+          <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0"></i>
+          <span x-text="errorLogin"></span>
+        </div>
+
+        <!-- Selector de Usuario (Dueño / Vendedor) -->
+        <div class="mb-4">
+          <label class="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wide">Usuario</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" @click="loginRol = 'dueno'"
+                    :class="loginRol === 'dueno' ? 'bg-slate-900 text-amber-400 border-slate-900 shadow-sm' : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'"
+                    class="py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all">
+              <i data-lucide="crown" class="w-3.5 h-3.5"></i>
+              <span>Dueño</span>
+            </button>
+            <button type="button" @click="loginRol = 'vendedor'"
+                    :class="loginRol === 'vendedor' ? 'bg-slate-900 text-amber-400 border-slate-900 shadow-sm' : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:bg-zinc-100'"
+                    class="py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all">
+              <i data-lucide="user" class="w-3.5 h-3.5"></i>
+              <span>Vendedor</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Campo PIN -->
+        <div class="mb-3">
+          <label class="block text-xs font-bold text-zinc-700 mb-1.5 uppercase tracking-wide">
+            PIN de Seguridad (4 a 6 dígitos)
+          </label>
+          <div class="relative">
+            <input :type="mostrarPin ? 'text' : 'password'" x-model="loginPin" maxlength="6" inputmode="numeric"
+                   :disabled="bloqueado" placeholder="••••"
+                   class="w-full pl-4 pr-11 py-3 text-center text-xl font-mono tracking-widest rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-slate-900 disabled:bg-zinc-100">
+            <button type="button" @click="mostrarPin = !mostrarPin" tabindex="-1"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600">
+              <i :data-lucide="mostrarPin ? 'eye-off' : 'eye'" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Teclado Numérico Táctil -->
+        <div class="grid grid-cols-3 gap-1.5 mb-4">
+          <template x-for="n in [1,2,3,4,5,6,7,8,9]">
+            <button type="button" @click="agregarDigitoPin(n)" :disabled="bloqueado"
+                    class="py-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-sm font-bold text-zinc-800 active:scale-95 transition-transform disabled:opacity-40">
+              <span x-text="n"></span>
+            </button>
+          </template>
+          <button type="button" @click="borrarDigitoPin()" :disabled="bloqueado"
+                  class="py-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-xs font-bold text-zinc-600 active:scale-95 transition-transform disabled:opacity-40">
+            Borrar
+          </button>
+          <button type="button" @click="agregarDigitoPin(0)" :disabled="bloqueado"
+                  class="py-2.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-sm font-bold text-zinc-800 active:scale-95 transition-transform disabled:opacity-40">
+            0
+          </button>
+          <button type="button" @click="loginPin = ''" :disabled="bloqueado"
+                  class="py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-bold text-rose-700 active:scale-95 transition-transform disabled:opacity-40">
+            Limpiar
+          </button>
+        </div>
+
+        <!-- Botón Ingresar -->
+        <button type="button" @click="verificarLogin()" :disabled="bloqueado || loginPin.length < 4"
+                class="w-full py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs uppercase tracking-wider shadow-md transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer">
+          <i data-lucide="log-in" class="w-4 h-4"></i>
+          <span>Ingresar al CRM</span>
+        </button>
+
+        <!-- Olvidé mi PIN / Llave Maestra -->
+        <div class="mt-5 pt-4 border-t border-zinc-100 text-center">
+          <button type="button" @click="modalRescate = true"
+                  class="text-xs text-zinc-500 hover:text-zinc-900 font-medium flex items-center justify-center gap-1 mx-auto transition-colors">
+            <i data-lucide="key" class="w-3.5 h-3.5"></i>
+            <span>Olvidé mi PIN (Llave Maestra de Rescate)</span>
+          </button>
+        </div>
+
+      </div>
+
+      <div class="text-center mt-4 text-[11px] text-zinc-400 font-medium flex items-center justify-center gap-1.5">
+        <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+        <span>100% Autónomo • PWA Offline • Cero Rombos</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= APLICACIÓN PRINCIPAL (AUTENTICADO) ================= -->
+  <div x-show="autenticado" x-cloak class="min-h-full flex flex-col">
+    
+    <!-- Barra Superior -->
+    <header class="bg-white border-b border-zinc-200 sticky top-0 z-40 shadow-xs">
+      <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+        
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-center font-bold shadow-sm">
+            <i data-lucide="funnel" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h1 class="text-sm font-bold text-zinc-900 leading-tight" x-text="config.nombre_negocio"></h1>
+            <span class="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">
+              <span x-text="usuarioActual.rol === 'dueno' ? 'Dueño' : 'Vendedor'"></span> • 
+              <span x-text="config.rubro_perfil === 'preventista' ? 'Preventa' : 'Servicios'"></span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Navegación Escritorio -->
+        <nav class="hidden md:flex items-center gap-1 bg-zinc-100 p-1 rounded-xl">
+          <button type="button" @click="pestaña = 'tablero'"
+                  :class="pestaña === 'tablero' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600 hover:text-zinc-900'"
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer">
+            <i data-lucide="kanban" class="w-3.5 h-3.5"></i>
+            <span>Tablero</span>
+          </button>
+          <button type="button" @click="pestaña = 'pedidos'"
+                  :class="pestaña === 'pedidos' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600 hover:text-zinc-900'"
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer">
+            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+            <span>Tomar Pedido</span>
+          </button>
+          <button type="button" @click="pestaña = 'clientes'"
+                  :class="pestaña === 'clientes' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600 hover:text-zinc-900'"
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer">
+            <i data-lucide="users" class="w-3.5 h-3.5"></i>
+            <span>Clientes (GPS)</span>
+          </button>
+          <button type="button" @click="pestaña = 'catalogo'"
+                  :class="pestaña === 'catalogo' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600 hover:text-zinc-900'"
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer">
+            <i data-lucide="package" class="w-3.5 h-3.5"></i>
+            <span>Precios</span>
+          </button>
+          <button type="button" @click="pestaña = 'configuracion'"
+                  :class="pestaña === 'configuracion' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-600 hover:text-zinc-900'"
+                  class="px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer">
+            <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+            <span>Configuración</span>
+          </button>
+        </nav>
+
+        <!-- Botones Rápidos (Excel + Salir) -->
+        <div class="flex items-center gap-2">
+          <button type="button" @click="exportarExcelCSV()" title="Descargar pedidos en Excel CSV"
+                  class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 text-xs font-bold text-zinc-700 transition-colors cursor-pointer shadow-xs">
+            <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span>Excel</span>
+          </button>
+
+          <button type="button" @click="cerrarSesion()" title="Cerrar sesión"
+                  class="w-9 h-9 rounded-xl border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 flex items-center justify-center text-zinc-500 hover:text-zinc-900 transition-colors cursor-pointer">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+      </div>
+    </header>
+
+    <!-- Contenedor Principal de Vistas -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8 flex flex-col">
+      
+      <!-- ================= VISTA 1: TABLERO KANBAN ================= -->
+      <div x-show="pestaña === 'tablero'" class="flex-1 flex flex-col">
+        <!-- Barra de Búsqueda y Métricas -->
+        <div class="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center gap-2 flex-1 max-w-md">
+            <div class="relative w-full">
+              <i data-lucide="search" class="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" x-model="filtroTablero" placeholder="Buscar por cliente, ID o dirección..."
+                     class="w-full pl-9 pr-3 py-2 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-900">
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs">
+            <div class="bg-white px-3 py-2 rounded-xl border border-zinc-200 shadow-xs flex items-center gap-2">
+              <span class="text-zinc-500 font-medium">Pedidos:</span>
+              <span class="font-bold text-zinc-900" x-text="pedidos.length">0</span>
+            </div>
+            <div class="bg-white px-3 py-2 rounded-xl border border-zinc-200 shadow-xs flex items-center gap-2">
+              <span class="text-zinc-500 font-medium">Total:</span>
+              <span class="font-bold text-emerald-700" x-text="totalPedidosARS"></span>
+            </div>
+            <button type="button" @click="pestaña = 'pedidos'"
+                    class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold flex items-center gap-1.5 transition-transform active:scale-95 shadow-sm cursor-pointer">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>Tomar Pedido</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Columnas Kanban -->
+        <div class="flex-1 overflow-x-auto pb-4">
+          <div class="flex gap-4 min-w-[900px] items-start">
+            <template x-for="col in columnas" :key="col.id">
+              <div class="w-72 shrink-0 bg-zinc-200/60 rounded-2xl p-3 border border-zinc-200 flex flex-col kanban-col"
+                   @dragover.prevent
+                   @drop="soltarTarjeta($event, col.id)">
+                
+                <div class="flex items-center justify-between mb-3 px-1">
+                  <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full" :class="col.colorDot"></span>
+                    <h3 class="text-xs font-bold text-zinc-800 uppercase tracking-wide" x-text="col.titulo"></h3>
+                  </div>
+                  <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white text-zinc-700 border border-zinc-200"
+                        x-text="filtrarPedidosColumna(col.id).length"></span>
+                </div>
+
+                <div class="flex-1 space-y-2.5 overflow-y-auto pr-0.5">
+                  <template x-for="item in filtrarPedidosColumna(col.id)" :key="item.id">
+                    <div class="bg-white p-3.5 rounded-xl border border-zinc-200/90 shadow-xs hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing group relative"
+                         draggable="true"
+                         @dragstart="iniciarArrastre($event, item.id)">
+                      
+                      <div class="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5 font-mono">
+                        <span class="font-bold text-zinc-600">#<span x-text="item.id"></span></span>
+                        <span x-text="item.fecha_formateada || item.fecha"></span>
+                      </div>
+
+                      <div class="mb-2">
+                        <h4 class="text-xs font-bold text-zinc-900 group-hover:text-amber-600 transition-colors"
+                            x-text="item.cliente_nombre"></h4>
+                        <p class="text-[11px] text-zinc-500 truncate" x-text="item.cliente_direccion || 'Sin dirección cargada'"></p>
+                      </div>
+
+                      <!-- Detalle de ítems -->
+                      <div class="text-[11px] text-zinc-600 bg-zinc-50 p-2 rounded-lg border border-zinc-100 mb-2.5 space-y-1">
+                        <template x-for="prod in (item.items || []).slice(0, 2)" :key="prod.id || prod.nombre">
+                          <div class="flex justify-between truncate">
+                            <span x-text="prod.cantidad + 'x ' + prod.nombre"></span>
+                            <span class="font-mono text-zinc-500" x-text="formatearARS(prod.subtotal)"></span>
+                          </div>
+                        </template>
+                        <div x-show="(item.items || []).length > 2" class="text-[10px] text-zinc-400 font-medium">
+                          + <span x-text="(item.items || []).length - 2"></span> productos más...
+                        </div>
+                      </div>
+
+                      <!-- Monto y Saldo -->
+                      <div class="flex items-center justify-between pt-2 border-t border-zinc-100">
+                        <div>
+                          <span class="text-[10px] text-zinc-400 font-semibold block leading-none">TOTAL ARS</span>
+                          <span class="text-xs font-black text-slate-900 font-mono" x-text="formatearARS(item.total)"></span>
+                        </div>
+
+                        <!-- Badge ROJO solo si tiene saldo pendiente -->
+                        <template x-if="item.saldo_pendiente > 0">
+                          <span class="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold">
+                            Debe <span x-text="formatearARS(item.saldo_pendiente)"></span>
+                          </span>
+                        </template>
+                      </div>
+
+                      <!-- Acciones: WhatsApp Cero Rombos + Avanzar -->
+                      <div class="mt-3 pt-2 border-t border-zinc-100 flex items-center justify-between gap-1">
+                        <a :href="generarLinkWhatsAppPedido(item)" target="_blank"
+                           class="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center gap-1 transition-colors"
+                           title="Avisar por WhatsApp (Sin emojis ni rombos)">
+                          <i data-lucide="message-circle" class="w-3.5 h-3.5 text-emerald-600"></i>
+                          <span>WhatsApp</span>
+                        </a>
+
+                        <div class="flex items-center gap-1">
+                          <button type="button" @click="abrirDetallePedido(item)"
+                                  class="p-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 text-zinc-600 border border-zinc-200 cursor-pointer"
+                                  title="Ver detalle">
+                            <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                          </button>
+                          <button type="button" @click="avanzarEtapaPedido(item)"
+                                  class="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-400 cursor-pointer"
+                                  title="Avanzar etapa">
+                            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  </template>
+
+                  <div x-show="filtrarPedidosColumna(col.id).length === 0"
+                       class="text-center py-8 text-zinc-400 text-xs">
+                    Sin pedidos en esta etapa
+                  </div>
+                </div>
+
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VISTA 2: TOMAR PEDIDO ================= -->
+      <div x-show="pestaña === 'pedidos'" class="flex-1">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          
+          <!-- Lado Izquierdo: Cliente & Productos (7 cols) -->
+          <div class="lg:col-span-7 space-y-4">
+            
+            <div class="bg-white rounded-2xl p-4 border border-zinc-200/90 shadow-xs">
+              <div class="flex items-center justify-between mb-3">
+                <h2 class="text-xs font-bold text-zinc-800 uppercase tracking-wide flex items-center gap-1.5">
+                  <i data-lucide="user-check" class="w-4 h-4 text-amber-500"></i>
+                  <span>Cliente</span>
+                </h2>
+                <button type="button" @click="modalNuevoCliente = true"
+                        class="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer">
+                  <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+                  <span>+ Nuevo Cliente</span>
+                </button>
+              </div>
+
+              <select x-model="pedidoClienteId" @change="cambiarClientePedido()"
+                      class="w-full px-3 py-2.5 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-800 focus:outline-none focus:ring-2 focus:ring-slate-900">
+                <option value="">-- Seleccionar Cliente de la Ruta --</option>
+                <template x-for="c in clientes" :key="c.id">
+                  <option :value="c.id" x-text="c.nombre + (c.saldo_deudor > 0 ? ' [DEUDA: ' + formatearARS(c.saldo_deudor) + ']' : '')"></option>
+                </template>
+              </select>
+
+              <template x-if="clientePedidoActual && clientePedidoActual.saldo_deudor > 0">
+                <div class="mt-2.5 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center justify-between">
+                  <div class="flex items-center gap-1.5 font-bold">
+                    <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600"></i>
+                    <span>Saldo pendiente acumulado:</span>
+                  </div>
+                  <span class="font-mono font-black" x-text="formatearARS(clientePedidoActual.saldo_deudor)"></span>
+                </div>
+              </template>
+            </div>
+
+            <!-- Catálogo y Buscador -->
+            <div class="bg-white rounded-2xl p-4 border border-zinc-200/90 shadow-xs">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <div class="flex-1 relative">
+                  <i data-lucide="search" class="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                  <input type="text" x-model="filtroProductoPedido" placeholder="Buscar producto o servicio..."
+                         class="w-full pl-9 pr-3 py-2 bg-zinc-50 rounded-xl border border-zinc-200 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-900">
+                </div>
+
+                <div class="flex items-center gap-1 bg-zinc-100 p-1 rounded-xl self-start sm:self-auto">
+                  <button type="button" @click="tipoTarifaPedido = 'minorista'"
+                          :class="tipoTarifaPedido === 'minorista' ? 'bg-white text-zinc-900 shadow-xs' : 'text-zinc-500 hover:text-zinc-900'"
+                          class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer">
+                    Minorista
+                  </button>
+                  <button type="button" @click="tipoTarifaPedido = 'mayorista'"
+                          :class="tipoTarifaPedido === 'mayorista' ? 'bg-slate-900 text-amber-400 shadow-xs' : 'text-zinc-500 hover:text-zinc-900'"
+                          class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer">
+                    Mayorista
+                  </button>
+                </div>
+              </div>
+
+              <!-- Grilla de Productos -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[480px] overflow-y-auto pr-1">
+                <template x-for="p in productosPedidoFiltrados" :key="p.id">
+                  <div class="p-3 rounded-xl border border-zinc-200 hover:border-zinc-300 bg-white flex flex-col justify-between transition-colors shadow-2xs">
+                    <div class="mb-2">
+                      <div class="flex justify-between items-start gap-1">
+                        <h3 class="text-xs font-bold text-zinc-900 leading-tight" x-text="p.nombre"></h3>
+                        <span class="text-[10px] text-zinc-400 font-mono" x-text="p.codigo || ''"></span>
+                      </div>
+                      <p class="text-[11px] text-zinc-500 mt-0.5 line-clamp-1" x-text="p.categoria"></p>
+                    </div>
+
+                    <div class="flex items-center justify-between pt-2 border-t border-zinc-100">
+                      <div>
+                        <span class="text-[10px] text-zinc-400 font-semibold block leading-none" x-text="tipoTarifaPedido === 'mayorista' ? 'MAYORISTA' : 'UNITARIO'"></span>
+                        <span class="text-xs font-black text-slate-900 font-mono"
+                              x-text="formatearARS(tipoTarifaPedido === 'mayorista' ? (p.precio_mayorista || p.precio_unitario) : p.precio_unitario)"></span>
+                      </div>
+
+                      <div class="flex items-center gap-1.5 bg-zinc-100 p-1 rounded-xl">
+                        <button type="button" @click="restarItemCanasta(p)"
+                                class="w-7 h-7 rounded-lg bg-white hover:bg-zinc-200 border border-zinc-200 text-zinc-800 font-black text-sm flex items-center justify-center active:scale-95 transition-transform cursor-pointer">
+                          -
+                        </button>
+                        <span class="w-7 text-center font-mono font-bold text-xs" x-text="cantidadEnCanasta(p.id)"></span>
+                        <button type="button" @click="sumarItemCanasta(p)"
+                                class="w-7 h-7 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-400 font-black text-sm flex items-center justify-center active:scale-95 transition-transform cursor-pointer">
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- Lado Derecho: Canasta & Cobro (5 cols) -->
+          <div class="lg:col-span-5 space-y-4">
+            <div class="bg-white rounded-2xl p-4 sm:p-5 border border-zinc-200/90 shadow-xs sticky top-20">
+              
+              <div class="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <h2 class="text-xs font-bold text-zinc-800 uppercase tracking-wide flex items-center gap-1.5">
+                  <i data-lucide="shopping-bag" class="w-4 h-4 text-emerald-600"></i>
+                  <span>Resumen del Pedido</span>
+                </h2>
+                <button type="button" @click="canasta = []; montoCobrado = 0;" x-show="canasta.length > 0"
+                        class="text-[11px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer">
+                  Vaciar
+                </button>
+              </div>
+
+              <div class="py-3 max-h-56 overflow-y-auto divide-y divide-zinc-100 space-y-2">
+                <template x-for="item in canasta" :key="item.producto_id">
+                  <div class="pt-2 flex items-center justify-between text-xs">
+                    <div class="flex-1 pr-2">
+                      <div class="font-bold text-zinc-800 leading-tight" x-text="item.nombre"></div>
+                      <div class="text-[11px] text-zinc-500 font-mono">
+                        <span x-text="item.cantidad"></span> x <span x-text="formatearARS(item.precio_unitario)"></span>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-mono font-bold text-zinc-900" x-text="formatearARS(item.subtotal)"></span>
+                      <button type="button" @click="eliminarDeCanasta(item.producto_id)"
+                              class="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+
+                <div x-show="canasta.length === 0" class="text-center py-8 text-zinc-400 text-xs">
+                  No hay productos en la canasta.<br>Tocá <strong>+</strong> para agregarlos.
+                </div>
+              </div>
+
+              <!-- Totales -->
+              <div class="pt-3 border-t border-zinc-200 space-y-2.5">
+                <div class="flex justify-between items-center text-sm font-bold text-zinc-800">
+                  <span>TOTAL PEDIDO:</span>
+                  <span class="font-mono text-base font-black text-slate-900" x-text="formatearARS(totalCanastaCalculado)"></span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                  <div>
+                    <label class="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Monto Cobrado ($)</label>
+                    <input type="number" step="any" x-model.number="montoCobrado" placeholder="0.00"
+                           class="w-full px-2.5 py-1.5 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-mono font-bold text-zinc-900">
+                  </div>
+                  <div>
+                    <label class="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Forma de Pago</label>
+                    <select x-model="metodoPago"
+                            class="w-full px-2.5 py-1.5 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-800">
+                      <option value="efectivo">Efectivo</option>
+                      <option value="transferencia">Transferencia QR</option>
+                      <option value="cuenta_corriente">Cuenta Corriente</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-zinc-500 font-medium">Saldo Pendiente:</span>
+                  <span class="font-mono font-bold" :class="saldoPendienteCalculado > 0 ? 'text-rose-600' : 'text-zinc-700'"
+                        x-text="formatearARS(saldoPendienteCalculado)"></span>
+                </div>
+
+                <input type="text" x-model="observacionesPedido" placeholder="Observaciones / Horario de entrega..."
+                       class="w-full px-3 py-2 bg-zinc-50 rounded-xl border border-zinc-200 text-xs text-zinc-800 placeholder-zinc-400">
+
+                <button type="button" @click="confirmarPedido()" :disabled="canasta.length === 0 || !pedidoClienteId"
+                        class="w-full mt-2 py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs uppercase tracking-wider shadow-md transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer">
+                  <i data-lucide="check-circle" class="w-4 h-4"></i>
+                  <span>Confirmar Pedido</span>
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ================= VISTA 3: CLIENTES (GPS) ================= -->
+      <div x-show="pestaña === 'clientes'" class="flex-1">
+        <div class="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-black text-zinc-900 tracking-tight">Directorio de Clientes</h2>
+            <p class="text-xs text-zinc-500 font-medium">Ruta de reparto, saldos y navegación GPS en la calle</p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <div class="relative flex-1 sm:w-64">
+              <i data-lucide="search" class="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" x-model="filtroClientes" placeholder="Buscar por nombre o dirección..."
+                     class="w-full pl-9 pr-3 py-2 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-900">
+            </div>
+            <button type="button" @click="abrirNuevoCliente()"
+                    class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-transform active:scale-95 shadow-sm cursor-pointer shrink-0">
+              <i data-lucide="user-plus" class="w-4 h-4"></i>
+              <span>Nuevo</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <template x-for="c in clientesFiltrados" :key="c.id">
+            <div class="bg-white rounded-2xl p-4 border border-zinc-200/90 shadow-xs flex flex-col justify-between">
+              <div>
+                <div class="flex items-start justify-between gap-2 mb-1.5">
+                  <h3 class="text-xs font-black text-zinc-900 tracking-tight leading-snug" x-text="c.nombre"></h3>
+                  <template x-if="c.saldo_deudor > 0">
+                    <span class="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold shrink-0">
+                      Debe <span x-text="formatearARS(c.saldo_deudor)"></span>
+                    </span>
+                  </template>
+                </div>
+
+                <p class="text-[11px] text-zinc-600 flex items-center gap-1.5 mb-1">
+                  <i data-lucide="map-pin" class="w-3.5 h-3.5 text-zinc-400 shrink-0"></i>
+                  <span class="truncate" x-text="c.direccion || 'Sin dirección cargada'"></span>
+                </p>
+
+                <p class="text-[11px] text-zinc-600 flex items-center gap-1.5 font-mono mb-2">
+                  <i data-lucide="phone" class="w-3.5 h-3.5 text-zinc-400 shrink-0"></i>
+                  <span x-text="c.telefono || 'Sin teléfono'"></span>
+                </p>
+
+                <div x-show="c.notas" class="text-[10px] text-zinc-500 bg-zinc-50 p-2 rounded-lg border border-zinc-100 line-clamp-2 mb-2" x-text="c.notas"></div>
+              </div>
+
+              <div class="mt-2 pt-2.5 border-t border-zinc-100 flex items-center justify-between gap-1.5">
+                <div class="flex items-center gap-1.5">
+                  <!-- GPS Google Maps -->
+                  <a :href="generarLinkGPS(c)" target="_blank"
+                     class="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-[11px] font-bold flex items-center gap-1 transition-colors"
+                     title="Abrir en Google Maps para navegar">
+                    <i data-lucide="navigation" class="w-3.5 h-3.5 text-blue-600"></i>
+                    <span>Cómo llegar</span>
+                  </a>
+
+                  <!-- WhatsApp Cero Rombos -->
+                  <a :href="generarLinkWhatsAppCliente(c)" target="_blank"
+                     class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[11px] font-bold flex items-center gap-1 transition-colors">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5 text-emerald-600"></i>
+                    <span>WhatsApp</span>
+                  </a>
+                </div>
+
+                <button type="button" @click="editarCliente(c)"
+                        class="p-1.5 rounded-xl bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-600 cursor-pointer">
+                  <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <div x-show="clientesFiltrados.length === 0" class="col-span-full py-12 text-center text-zinc-400 text-xs">
+            No se encontraron clientes.
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VISTA 4: CATÁLOGO ================= -->
+      <div x-show="pestaña === 'catalogo'" class="flex-1">
+        <div class="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-black text-zinc-900 tracking-tight">Lista de Precios & Catálogo</h2>
+            <p class="text-xs text-zinc-500 font-medium">Tarifas mayoristas y minoristas</p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <div class="relative flex-1 sm:w-64">
+              <i data-lucide="search" class="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" x-model="filtroCatalogo" placeholder="Buscar producto o código..."
+                     class="w-full pl-9 pr-3 py-2 bg-white rounded-xl border border-zinc-200 text-xs text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-slate-900">
+            </div>
+            <button type="button" @click="abrirNuevoProducto()"
+                    class="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-transform active:scale-95 shadow-sm cursor-pointer shrink-0">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>Nuevo Ítem</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-zinc-200/90 shadow-xs overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs divide-y divide-zinc-200">
+              <thead class="bg-zinc-50 text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
+                <tr>
+                  <th class="py-3 px-4">Código / Ítem</th>
+                  <th class="py-3 px-4">Categoría</th>
+                  <th class="py-3 px-4 text-right">Precio Minorista</th>
+                  <th class="py-3 px-4 text-right">Precio Mayorista</th>
+                  <th class="py-3 px-4 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-zinc-100 font-medium text-zinc-800">
+                <template x-for="p in catalogoFiltrado" :key="p.id">
+                  <tr class="hover:bg-zinc-50/70 transition-colors">
+                    <td class="py-3 px-4">
+                      <div class="font-bold text-zinc-900" x-text="p.nombre"></div>
+                      <div class="text-[11px] text-zinc-400 font-mono" x-text="p.codigo || 'S/C'"></div>
+                    </td>
+                    <td class="py-3 px-4">
+                      <span class="px-2 py-0.5 rounded-lg bg-zinc-100 text-zinc-700 text-[11px] font-semibold"
+                            x-text="p.categoria || 'General'"></span>
+                    </td>
+                    <td class="py-3 px-4 text-right font-mono font-bold text-zinc-900"
+                        x-text="formatearARS(p.precio_unitario)"></td>
+                    <td class="py-3 px-4 text-right font-mono font-bold text-emerald-700"
+                        x-text="formatearARS(p.precio_mayorista || p.precio_unitario)"></td>
+                    <td class="py-3 px-4 text-center">
+                      <div class="flex items-center justify-center gap-1">
+                        <button type="button" @click="editarProducto(p)"
+                                class="p-1.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 text-zinc-600 border border-zinc-200 cursor-pointer">
+                          <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                        <button type="button" @click="eliminarProducto(p.id)"
+                                class="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 cursor-pointer">
+                          <i data-lucide="trash" class="w-3.5 h-3.5"></i>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= VISTA 5: CONFIGURACIÓN ================= -->
+      <div x-show="pestaña === 'configuracion'" class="flex-1 max-w-3xl mx-auto w-full space-y-5">
+        <div>
+          <h2 class="text-base font-black text-zinc-900 tracking-tight">Configuración del Sistema</h2>
+          <p class="text-xs text-zinc-500 font-medium">Identidad del negocio, llaves de rescate y copias de seguridad</p>
+        </div>
+
+        <!-- Identidad -->
+        <div class="bg-white rounded-2xl p-5 border border-zinc-200/90 shadow-xs space-y-3">
+          <h3 class="text-xs font-bold text-zinc-900 uppercase">Identidad & Cobro</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nombre del Negocio</label>
+              <input type="text" x-model="config.nombre_negocio" @change="guardarStorage()"
+                     class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Teléfono</label>
+              <input type="tel" x-model="config.telefono_contacto" @change="guardarStorage()"
+                     class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Alias MP / Banco</label>
+              <input type="text" x-model="config.alias_mp" @change="guardarStorage()"
+                     class="w-full px-3 py-2 text-xs font-mono rounded-xl border border-zinc-300">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">CBU / CVU</label>
+              <input type="text" x-model="config.cbu_mp" @change="guardarStorage()"
+                     class="w-full px-3 py-2 text-xs font-mono rounded-xl border border-zinc-300">
+            </div>
+          </div>
+        </div>
+
+        <!-- Llave Maestra de Rescate -->
+        <div class="bg-white rounded-2xl p-5 border border-zinc-200/90 shadow-xs space-y-3">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+              <i data-lucide="key" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h3 class="text-xs font-bold text-zinc-900 uppercase">Llave Maestra de Rescate</h3>
+              <p class="text-[11px] text-zinc-500">Recuperá el PIN del Dueño sin internet ni email</p>
+            </div>
+          </div>
+
+          <div class="p-3 bg-amber-50 rounded-xl border border-amber-200 flex items-center justify-between gap-2">
+            <div class="font-mono font-black text-sm text-zinc-900 select-all" x-text="config.llave_maestra_rescate"></div>
+            <button type="button" @click="copiarLlave()"
+                    class="px-3 py-1.5 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-900 text-xs font-bold flex items-center gap-1 cursor-pointer">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span x-text="llaveCopiada ? '¡Copiada!' : 'Copiar'"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Copias de Seguridad & Excel -->
+        <div class="bg-white rounded-2xl p-5 border border-zinc-200/90 shadow-xs space-y-3">
+          <h3 class="text-xs font-bold text-zinc-900 uppercase">Respaldos & Exportación</h3>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button type="button" @click="exportarBackupJSON()"
+                    class="p-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 flex items-center gap-3 text-left cursor-pointer">
+              <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                <i data-lucide="download" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <span class="text-xs font-bold text-zinc-900 block">Exportar Respaldo JSON</span>
+                <span class="text-[10px] text-zinc-500">Descargar base de datos completa</span>
+              </div>
+            </button>
+
+            <button type="button" @click="exportarExcelCSV()"
+                    class="p-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 flex items-center gap-3 text-left cursor-pointer">
+              <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <span class="text-xs font-bold text-zinc-900 block">Exportar a Excel (CSV)</span>
+                <span class="text-[10px] text-zinc-500">Planilla compatible con Excel Windows</span>
+              </div>
+            </button>
+          </div>
+
+          <div class="pt-2">
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Restaurar Copia JSON</label>
+            <input type="file" @change="importarBackupJSON($event)" accept=".json"
+                   class="block w-full text-xs text-zinc-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-amber-400 hover:file:bg-slate-800">
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- Barra Inferior Móvil (Fija) -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-zinc-200 flex items-center justify-around py-2 px-2 shadow-lg">
+      <button type="button" @click="pestaña = 'tablero'"
+              :class="pestaña === 'tablero' ? 'text-amber-600' : 'text-zinc-500'"
+              class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold cursor-pointer">
+        <i data-lucide="kanban" class="w-5 h-5"></i>
+        <span>Tablero</span>
+      </button>
+
+      <button type="button" @click="pestaña = 'pedidos'"
+              :class="pestaña === 'pedidos' ? 'text-amber-600' : 'text-zinc-500'"
+              class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold cursor-pointer">
+        <i data-lucide="plus-circle" class="w-5 h-5"></i>
+        <span>Pedido</span>
+      </button>
+
+      <button type="button" @click="pestaña = 'clientes'"
+              :class="pestaña === 'clientes' ? 'text-amber-600' : 'text-zinc-500'"
+              class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold cursor-pointer">
+        <i data-lucide="users" class="w-5 h-5"></i>
+        <span>Clientes</span>
+      </button>
+
+      <button type="button" @click="pestaña = 'catalogo'"
+              :class="pestaña === 'catalogo' ? 'text-amber-600' : 'text-zinc-500'"
+              class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold cursor-pointer">
+        <i data-lucide="package" class="w-5 h-5"></i>
+        <span>Precios</span>
+      </button>
+
+      <button type="button" @click="pestaña = 'configuracion'"
+              :class="pestaña === 'configuracion' ? 'text-amber-600' : 'text-zinc-500'"
+              class="flex flex-col items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold cursor-pointer">
+        <i data-lucide="settings" class="w-5 h-5"></i>
+        <span>Ajustes</span>
+      </button>
+    </nav>
+
+  </div>
+
+  <!-- Modal Recuperación con Llave Maestra -->
+  <div x-show="modalRescate" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200"
+         @click.outside="modalRescate = false">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-zinc-900 text-sm flex items-center gap-2">
+          <i data-lucide="key" class="w-4 h-4 text-amber-500"></i>
+          <span>Recuperar PIN de Dueño</span>
+        </h3>
+        <button type="button" @click="modalRescate = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-zinc-600 mb-3">
+        Ingresá la Llave Maestra de Rescate para restablecer el PIN sin conexión a internet:
+      </p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Llave Maestra</label>
+          <input type="text" x-model="rescateInputLlave" placeholder="RESCATE-CRM-XXXX"
+                 class="w-full px-3 py-2 text-xs font-mono uppercase rounded-xl border border-zinc-300">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nuevo PIN</label>
+          <input type="password" x-model="rescateInputNuevoPin" maxlength="6" inputmode="numeric" placeholder="4 a 6 dígitos"
+                 class="w-full px-3 py-2 text-xs font-mono text-center rounded-xl border border-zinc-300">
+        </div>
+      </div>
+
+      <div class="mt-4 flex gap-2">
+        <button type="button" @click="modalRescate = false"
+                class="flex-1 py-2 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700">
+          Cancelar
+        </button>
+        <button type="button" @click="ejecutarRescateOffline()"
+                class="flex-1 py-2 rounded-xl bg-slate-900 text-amber-400 text-xs font-bold">
+          Restablecer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Detalle Pedido Tablero -->
+  <div x-show="modalDetallePedido" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-zinc-200 max-h-[90vh] flex flex-col"
+         @click.outside="modalDetallePedido = false">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-100">
+        <h3 class="font-bold text-zinc-900 text-sm">
+          Pedido #<span x-text="pedidoSeleccionado?.id"></span> - <span x-text="pedidoSeleccionado?.cliente_nombre"></span>
+        </h3>
+        <button type="button" @click="modalDetallePedido = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto py-3 space-y-3">
+        <div>
+          <label class="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Cambiar Estado</label>
+          <select x-model="pedidoSeleccionado.estado" @change="guardarStorage()"
+                  class="w-full px-3 py-2 bg-zinc-50 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-800">
+            <template x-for="c in columnas" :key="c.id">
+              <option :value="c.id" x-text="c.titulo"></option>
+            </template>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-[10px] font-bold text-zinc-500 uppercase mb-1">Ítems</label>
+          <div class="border border-zinc-200 rounded-xl overflow-hidden divide-y divide-zinc-100 text-xs">
+            <template x-for="prod in pedidoSeleccionado?.items || []" :key="prod.producto_id || prod.nombre">
+              <div class="p-2 flex justify-between">
+                <span><span x-text="prod.cantidad"></span>x <span x-text="prod.nombre"></span></span>
+                <span class="font-mono font-bold" x-text="formatearARS(prod.subtotal)"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        <div class="bg-zinc-50 p-3 rounded-xl border border-zinc-200 text-xs space-y-1">
+          <div class="flex justify-between"><span>Total:</span><span class="font-mono font-bold" x-text="formatearARS(pedidoSeleccionado?.total)"></span></div>
+          <div class="flex justify-between"><span>Cobrado:</span><span class="font-mono font-bold text-emerald-600" x-text="formatearARS(pedidoSeleccionado?.monto_cobrado)"></span></div>
+          <div class="flex justify-between font-bold border-t border-zinc-200 pt-1">
+            <span>Saldo Pendiente:</span>
+            <span class="font-mono" :class="(pedidoSeleccionado?.saldo_pendiente || 0) > 0 ? 'text-rose-600' : 'text-zinc-700'"
+                  x-text="formatearARS(pedidoSeleccionado?.saldo_pendiente)"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-zinc-100 flex items-center justify-between gap-2">
+        <a :href="generarLinkWhatsAppPedido(pedidoSeleccionado)" target="_blank"
+           class="px-3 py-2 rounded-xl bg-emerald-600 text-white font-bold text-xs flex items-center gap-1.5">
+          <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+          <span>Enviar WhatsApp</span>
+        </a>
+        <button type="button" @click="modalDetallePedido = false"
+                class="px-3 py-2 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Nuevo Cliente -->
+  <div x-show="modalNuevoCliente" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200"
+         @click.outside="modalNuevoCliente = false">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-zinc-900 text-sm flex items-center gap-2">
+          <i data-lucide="user-plus" class="w-4 h-4 text-amber-500"></i>
+          <span x-text="editandoCliente ? 'Editar Cliente' : 'Nuevo Cliente'"></span>
+        </h3>
+        <button type="button" @click="modalNuevoCliente = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nombre o Razón Social</label>
+          <input type="text" x-model="formCliente.nombre" placeholder="Ej: Kiosco Belgrano"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Teléfono</label>
+          <input type="tel" x-model="formCliente.telefono" placeholder="Ej: 11 2345-6789"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Dirección</label>
+          <input type="text" x-model="formCliente.direccion" placeholder="Ej: Av. San Martín 1234"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300">
+        </div>
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Notas</label>
+          <input type="text" x-model="formCliente.notas" placeholder="Ej: Entrega por la mañana"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300">
+        </div>
+      </div>
+
+      <div class="mt-4 flex gap-2">
+        <button type="button" @click="modalNuevoCliente = false"
+                class="flex-1 py-2 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700">
+          Cancelar
+        </button>
+        <button type="button" @click="guardarClienteForm()" :disabled="!formCliente.nombre.trim()"
+                class="flex-1 py-2 rounded-xl bg-slate-900 text-amber-400 text-xs font-bold disabled:opacity-40">
+          Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Nuevo Producto -->
+  <div x-show="modalNuevoProducto" x-cloak
+       class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-zinc-200"
+         @click.outside="modalNuevoProducto = false">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-zinc-900 text-sm flex items-center gap-2">
+          <i data-lucide="package" class="w-4 h-4 text-amber-500"></i>
+          <span x-text="editandoProducto ? 'Editar Producto' : 'Nuevo Producto'"></span>
+        </h3>
+        <button type="button" @click="modalNuevoProducto = false" class="text-zinc-400 hover:text-zinc-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Nombre</label>
+          <input type="text" x-model="formProducto.nombre" placeholder="Ej: Harina 000 x 25kg"
+                 class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Código</label>
+            <input type="text" x-model="formProducto.codigo" placeholder="HAR-01"
+                   class="w-full px-3 py-2 text-xs font-mono uppercase rounded-xl border border-zinc-300">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Categoría</label>
+            <input type="text" x-model="formProducto.categoria" placeholder="Alimentos"
+                   class="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Precio Minorista ($)</label>
+            <input type="number" step="any" x-model.number="formProducto.precio_unitario"
+                   class="w-full px-3 py-2 text-xs font-mono font-bold rounded-xl border border-zinc-300">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-zinc-700 uppercase mb-1">Precio Mayorista ($)</label>
+            <input type="number" step="any" x-model.number="formProducto.precio_mayorista"
+                   class="w-full px-3 py-2 text-xs font-mono font-bold rounded-xl border border-zinc-300">
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 flex gap-2">
+        <button type="button" @click="modalNuevoProducto = false"
+                class="flex-1 py-2 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-700">
+          Cancelar
+        </button>
+        <button type="button" @click="guardarProductoForm()" :disabled="!formProducto.nombre.trim()"
+                class="flex-1 py-2 rounded-xl bg-slate-900 text-amber-400 text-xs font-bold disabled:opacity-40">
+          Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPT DEL MOTOR OFFLINE PWA -->
+  <script>
+    function miniCRMPWA() {
+      return {
+        autenticado: false,
+        usuarioActual: { rol: 'dueno', nombre: 'Dueño' },
+        pestaña: 'tablero',
+
+        // Seguridad & Rate Limiting
+        loginRol: 'dueno',
+        loginPin: '',
+        mostrarPin: false,
+        errorLogin: '',
+        intentosFallidos: 0,
+        bloqueado: false,
+        segundosBloqueo: 0,
+        timerBloqueo: null,
+
+        // Llave Maestra de Rescate
+        modalRescate: false,
+        rescateInputLlave: '',
+        rescateInputNuevoPin: '',
+        llaveCopiada: false,
+
+        // Configuración y Datos
+        config: {
+          nombre_negocio: 'Mini CRM Preventa',
+          rubro_perfil: 'preventista',
+          alias_mp: 'distri.mp',
+          cbu_mp: '0000003100012345678901',
+          telefono_contacto: '11 4000-0000',
+          pin_dueno: '1234',
+          pin_vendedor: '4321',
+          llave_maestra_rescate: 'RESCATE-CRM-' + Math.floor(1000 + Math.random() * 9000)
+        },
+
+        pedidos: [],
+        clientes: [],
+        catalogo: [],
+        columnas: [],
+
+        // Tablero
+        filtroTablero: '',
+        modalDetallePedido: false,
+        pedidoSeleccionado: null,
+        arrastrandoId: null,
+
+        // Tomar Pedido
+        pedidoClienteId: '',
+        clientePedidoActual: null,
+        filtroProductoPedido: '',
+        tipoTarifaPedido: 'minorista',
+        canasta: [],
+        montoCobrado: 0,
+        metodoPago: 'efectivo',
+        observacionesPedido: '',
+
+        // Modales
+        modalNuevoCliente: false,
+        editandoCliente: false,
+        formCliente: { id: null, nombre: '', telefono: '', direccion: '', notas: '' },
+        filtroClientes: '',
+
+        modalNuevoProducto: false,
+        editandoProducto: false,
+        formProducto: { id: null, codigo: '', nombre: '', categoria: 'General', precio_unitario: 0, precio_mayorista: 0 },
+        filtroCatalogo: '',
+
+        iniciar() {
+          this.cargarStorage();
+          this.definirColumnas();
+          this.verificarBloqueoPersistente();
+
+          // Registrar Service Worker para PWA Offline
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(e => console.log('SW reg:', e));
+          }
+
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        cargarStorage() {
+          const cfg = localStorage.getItem('crm_config');
+          if (cfg) {
+            try { this.config = Object.assign(this.config, JSON.parse(cfg)); } catch (e) {}
+          } else {
+            localStorage.setItem('crm_config', JSON.stringify(this.config));
+          }
+
+          const clis = localStorage.getItem('crm_clientes');
+          if (clis) {
+            try { this.clientes = JSON.parse(clis); } catch (e) {}
+          } else {
+            // Clientes demo iniciales
+            this.clientes = [
+              { id: 1, nombre: 'Almacén San Cayetano', telefono: '11 2345-6789', direccion: 'Av. Belgrano 1234', saldo_deudor: 4500.0, notas: 'Entrega por la mañana' },
+              { id: 2, nombre: 'Kiosco El Trébol', telefono: '11 9876-5432', direccion: 'Mitre 450', saldo_deudor: 0, notas: 'Paga con QR' },
+              { id: 3, nombre: 'Supermercado Central', telefono: '11 5555-4444', direccion: 'San Martín 789', saldo_deudor: 12500.0, notas: 'Recepción en depósito' }
+            ];
+            localStorage.setItem('crm_clientes', JSON.stringify(this.clientes));
+          }
+
+          const prods = localStorage.getItem('crm_catalogo');
+          if (prods) {
+            try { this.catalogo = JSON.parse(prods); } catch (e) {}
+          } else {
+            // Catálogo inicial
+            this.catalogo = [
+              { id: 1, codigo: 'GAS-001', nombre: 'Gaseosa Cola 2.25L', categoria: 'Bebidas', precio_unitario: 2200.0, precio_mayorista: 1850.0 },
+              { id: 2, codigo: 'AGU-002', nombre: 'Agua Mineral 1.5L', categoria: 'Bebidas', precio_unitario: 1100.0, precio_mayorista: 900.0 },
+              { id: 3, codigo: 'GAL-003', nombre: 'Galletitas Surtidas 400g', categoria: 'Comestibles', precio_unitario: 1450.0, precio_mayorista: 1200.0 },
+              { id: 4, codigo: 'ACE-004', nombre: 'Aceite de Girasol 900ml', categoria: 'Almacén', precio_unitario: 2400.0, precio_mayorista: 2050.0 }
+            ];
+            localStorage.setItem('crm_catalogo', JSON.stringify(this.catalogo));
+          }
+
+          const peds = localStorage.getItem('crm_pedidos');
+          if (peds) {
+            try { this.pedidos = JSON.parse(peds); } catch (e) {}
+          } else {
+            // Pedidos demo iniciales
+            const ahora = new Date();
+            const fechaStr = ahora.toLocaleDateString('es-AR') + ' ' + ahora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            this.pedidos = [
+              {
+                id: 101,
+                cliente_id: 1,
+                cliente_nombre: 'Almacén San Cayetano',
+                cliente_telefono: '11 2345-6789',
+                cliente_direccion: 'Av. Belgrano 1234',
+                fecha: ahora.toISOString(),
+                fecha_formateada: fechaStr,
+                estado: 'nuevo',
+                items: [
+                  { producto_id: 1, nombre: 'Gaseosa Cola 2.25L', cantidad: 6, precio_unitario: 1850.0, subtotal: 11100.0 }
+                ],
+                total: 11100.0,
+                monto_cobrado: 6600.0,
+                saldo_pendiente: 4500.0,
+                observaciones: 'Llevar factura A'
+              },
+              {
+                id: 102,
+                cliente_id: 2,
+                cliente_nombre: 'Kiosco El Trébol',
+                cliente_telefono: '11 9876-5432',
+                cliente_direccion: 'Mitre 450',
+                fecha: ahora.toISOString(),
+                fecha_formateada: fechaStr,
+                estado: 'en_camino',
+                items: [
+                  { producto_id: 3, nombre: 'Galletitas Surtidas 400g', cantidad: 4, precio_unitario: 1200.0, subtotal: 4800.0 }
+                ],
+                total: 4800.0,
+                monto_cobrado: 4800.0,
+                saldo_pendiente: 0,
+                observaciones: 'Entregar antes de las 13hs'
+              }
+            ];
+            localStorage.setItem('crm_pedidos', JSON.stringify(this.pedidos));
+          }
+        },
+
+        guardarStorage() {
+          localStorage.setItem('crm_config', JSON.stringify(this.config));
+          localStorage.setItem('crm_clientes', JSON.stringify(this.clientes));
+          localStorage.setItem('crm_catalogo', JSON.stringify(this.catalogo));
+          localStorage.setItem('crm_pedidos', JSON.stringify(this.pedidos));
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        definirColumnas() {
+          if (this.config.rubro_perfil === 'preventista') {
+            this.columnas = [
+              { id: 'nuevo', titulo: 'Nuevo Pedido', colorDot: 'bg-blue-500' },
+              { id: 'en_camino', titulo: 'En Reparto', colorDot: 'bg-amber-500' },
+              { id: 'entregado', titulo: 'Entregado', colorDot: 'bg-purple-500' },
+              { id: 'cobrado', titulo: 'Cobrado / Listo', colorDot: 'bg-emerald-500' }
+            ];
+          } else {
+            this.columnas = [
+              { id: 'contacto', titulo: 'Contacto', colorDot: 'bg-blue-500' },
+              { id: 'presupuesto', titulo: 'Presupuestado', colorDot: 'bg-amber-500' },
+              { id: 'negociacion', titulo: 'En Negociación', colorDot: 'bg-purple-500' },
+              { id: 'aprobado', titulo: 'Aprobado / Activo', colorDot: 'bg-emerald-500' }
+            ];
+          }
+        },
+
+        // ================= RATE LIMITING & LOGIN =================
+        verificarBloqueoPersistente() {
+          const exp = parseInt(localStorage.getItem('crm_bloqueo_expira') || '0', 10);
+          const ahora = Math.floor(Date.now() / 1000);
+          if (exp > ahora) {
+            this.iniciarCuentaRegresiva(exp - ahora);
+          }
+        },
+
+        iniciarCuentaRegresiva(segs) {
+          this.bloqueado = true;
+          this.segundosBloqueo = segs;
+          if (this.timerBloqueo) clearInterval(this.timerBloqueo);
+
+          this.timerBloqueo = setInterval(() => {
+            this.segundosBloqueo--;
+            if (this.segundosBloqueo <= 0) {
+              clearInterval(this.timerBloqueo);
+              this.bloqueado = false;
+              this.errorLogin = '';
+              this.intentosFallidos = 0;
+              localStorage.removeItem('crm_bloqueo_expira');
+            }
+          }, 1000);
+        },
+
+        agregarDigitoPin(n) {
+          if (this.loginPin.length < 6) this.loginPin += n.toString();
+        },
+
+        borrarDigitoPin() {
+          this.loginPin = this.loginPin.slice(0, -1);
+        },
+
+        verificarLogin() {
+          const pinValido = this.loginRol === 'dueno' ? (this.config.pin_dueno || '1234') : (this.config.pin_vendedor || '4321');
+          
+          if (this.loginPin === pinValido) {
+            this.autenticado = true;
+            this.usuarioActual = { rol: this.loginRol, nombre: this.loginRol === 'dueno' ? 'Dueño' : 'Vendedor' };
+            this.loginPin = '';
+            this.intentosFallidos = 0;
+            this.errorLogin = '';
+            this.$nextTick(() => lucide.createIcons());
+          } else {
+            this.intentosFallidos++;
+            this.loginPin = '';
+            
+            if (this.intentosFallidos >= 5) {
+              const expira = Math.floor(Date.now() / 1000) + 120;
+              localStorage.setItem('crm_bloqueo_expira', expira.toString());
+              this.iniciarCuentaRegresiva(120);
+            } else {
+              this.errorLogin = `PIN incorrecto (Intento ${this.intentosFallidos} de 5)`;
+            }
+          }
+        },
+
+        cerrarSesion() {
+          this.autenticado = false;
+          this.loginPin = '';
+          this.pestaña = 'tablero';
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        ejecutarRescateOffline() {
+          if (this.rescateInputLlave.trim().toUpperCase() === this.config.llave_maestra_rescate.trim().toUpperCase()) {
+            if (this.rescateInputNuevoPin.length < 4) {
+              alert('El nuevo PIN debe tener al menos 4 dígitos.');
+              return;
+            }
+            this.config.pin_dueno = this.rescateInputNuevoPin;
+            this.guardarStorage();
+            alert('PIN de Dueño restablecido con éxito.');
+            this.modalRescate = false;
+            this.loginRol = 'dueno';
+            this.loginPin = this.rescateInputNuevoPin;
+            this.bloqueado = false;
+            if (this.timerBloqueo) clearInterval(this.timerBloqueo);
+            localStorage.removeItem('crm_bloqueo_expira');
+          } else {
+            alert('Llave de rescate inválida.');
+          }
+        },
+
+        async copiarLlave() {
+          try {
+            await navigator.clipboard.writeText(this.config.llave_maestra_rescate);
+            this.llaveCopiada = true;
+            setTimeout(() => this.llaveCopiada = false, 2500);
+          } catch (e) {
+            alert('Llave: ' + this.config.llave_maestra_rescate);
+          }
+        },
+
+        // ================= TABLERO KANBAN =================
+        filtrarPedidosColumna(colId) {
+          const q = this.filtroTablero.trim().toLowerCase();
+          return this.pedidos.filter(p => {
+            if (p.estado !== colId) return false;
+            if (!q) return true;
+            return (p.cliente_nombre || '').toLowerCase().includes(q) ||
+                   (p.cliente_direccion || '').toLowerCase().includes(q) ||
+                   (p.id || '').toString().includes(q);
+          });
+        },
+
+        get totalPedidosARS() {
+          const sum = this.pedidos.reduce((acc, p) => acc + (p.total || 0), 0);
+          return this.formatearARS(sum);
+        },
+
+        iniciarArrastre(event, id) {
+          this.arrastrandoId = id;
+          event.dataTransfer.setData('text/plain', id);
+        },
+
+        soltarTarjeta(event, nuevoEstado) {
+          const id = event.dataTransfer.getData('text/plain') || this.arrastrandoId;
+          const p = this.pedidos.find(x => x.id == id);
+          if (p) {
+            p.estado = nuevoEstado;
+            this.guardarStorage();
+          }
+        },
+
+        avanzarEtapaPedido(p) {
+          const ids = this.columnas.map(c => c.id);
+          const idx = ids.indexOf(p.estado);
+          if (idx !== -1 && idx < ids.length - 1) {
+            p.estado = ids[idx + 1];
+            this.guardarStorage();
+          }
+        },
+
+        abrirDetallePedido(p) {
+          this.pedidoSeleccionado = p;
+          this.modalDetallePedido = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        // ================= TOMAR PEDIDO =================
+        cambiarClientePedido() {
+          this.clientePedidoActual = this.clientes.find(c => c.id == this.pedidoClienteId) || null;
+        },
+
+        get productosPedidoFiltrados() {
+          const q = this.filtroProductoPedido.trim().toLowerCase();
+          if (!q) return this.catalogo;
+          return this.catalogo.filter(p =>
+            (p.nombre || '').toLowerCase().includes(q) ||
+            (p.codigo || '').toLowerCase().includes(q) ||
+            (p.categoria || '').toLowerCase().includes(q)
+          );
+        },
+
+        cantidadEnCanasta(prodId) {
+          const it = this.canasta.find(i => i.producto_id == prodId);
+          return it ? it.cantidad : 0;
+        },
+
+        sumarItemCanasta(p) {
+          const precio = this.tipoTarifaPedido === 'mayorista' ? (p.precio_mayorista || p.precio_unitario) : p.precio_unitario;
+          const ex = this.canasta.find(i => i.producto_id == p.id);
+          if (ex) {
+            ex.cantidad++;
+            ex.subtotal = ex.cantidad * ex.precio_unitario;
+          } else {
+            this.canasta.push({
+              producto_id: p.id,
+              nombre: p.nombre,
+              precio_unitario: precio,
+              cantidad: 1,
+              subtotal: precio
+            });
+          }
+        },
+
+        restarItemCanasta(p) {
+          const idx = this.canasta.findIndex(i => i.producto_id == p.id);
+          if (idx !== -1) {
+            if (this.canasta[idx].cantidad > 1) {
+              this.canasta[idx].cantidad--;
+              this.canasta[idx].subtotal = this.canasta[idx].cantidad * this.canasta[idx].precio_unitario;
+            } else {
+              this.canasta.splice(idx, 1);
+            }
+          }
+        },
+
+        eliminarDeCanasta(prodId) {
+          this.canasta = this.canasta.filter(i => i.producto_id != prodId);
+        },
+
+        get totalCanastaCalculado() {
+          return this.canasta.reduce((acc, i) => acc + (i.subtotal || 0), 0);
+        },
+
+        get saldoPendienteCalculado() {
+          const tot = this.totalCanastaCalculado;
+          const cob = Number(this.montoCobrado) || 0;
+          return Math.max(0, tot - cob);
+        },
+
+        confirmarPedido() {
+          if (!this.pedidoClienteId || this.canasta.length === 0) return;
+          const cliente = this.clientes.find(c => c.id == this.pedidoClienteId);
+          const ahora = new Date();
+          const fechaStr = ahora.toLocaleDateString('es-AR') + ' ' + ahora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+          const total = this.totalCanastaCalculado;
+          const cobrado = Number(this.montoCobrado) || 0;
+          const saldo = this.saldoPendienteCalculado;
+
+          const nuevoId = (this.pedidos.length > 0 ? Math.max(...this.pedidos.map(p => p.id)) : 100) + 1;
+          const nuevo = {
+            id: nuevoId,
+            cliente_id: cliente.id,
+            cliente_nombre: cliente.nombre,
+            cliente_telefono: cliente.telefono,
+            cliente_direccion: cliente.direccion,
+            fecha: ahora.toISOString(),
+            fecha_formateada: fechaStr,
+            estado: this.columnas[0].id,
+            items: JSON.parse(JSON.stringify(this.canasta)),
+            total,
+            monto_cobrado: cobrado,
+            saldo_pendiente: saldo,
+            metodo_pago: this.metodoPago,
+            observaciones: this.observacionesPedido
+          };
+
+          this.pedidos.unshift(nuevo);
+
+          // Actualizar deuda del cliente si quedó saldo
+          if (saldo > 0) {
+            cliente.saldo_deudor = (cliente.saldo_deudor || 0) + saldo;
+          }
+
+          this.guardarStorage();
+
+          // Limpiar canasta
+          this.canasta = [];
+          this.montoCobrado = 0;
+          this.observacionesPedido = '';
+          this.pestaña = 'tablero';
+          alert('¡Pedido #' + nuevo.id + ' registrado con éxito!');
+        },
+
+        // ================= CLIENTES & GPS =================
+        get clientesFiltrados() {
+          const q = this.filtroClientes.trim().toLowerCase();
+          if (!q) return this.clientes;
+          return this.clientes.filter(c =>
+            (c.nombre || '').toLowerCase().includes(q) ||
+            (c.direccion || '').toLowerCase().includes(q) ||
+            (c.telefono || '').toLowerCase().includes(q)
+          );
+        },
+
+        generarLinkGPS(c) {
+          const destino = encodeURIComponent((c.direccion || c.nombre) + ', Argentina');
+          return `https://www.google.com/maps/dir/?api=1&destination=${destino}`;
+        },
+
+        abrirNuevoCliente() {
+          this.editandoCliente = false;
+          this.formCliente = { id: null, nombre: '', telefono: '', direccion: '', notas: '' };
+          this.modalNuevoCliente = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        editarCliente(c) {
+          this.editandoCliente = true;
+          this.formCliente = { ...c };
+          this.modalNuevoCliente = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        guardarClienteForm() {
+          if (!this.formCliente.nombre.trim()) return;
+          if (this.editandoCliente) {
+            const idx = this.clientes.findIndex(c => c.id === this.formCliente.id);
+            if (idx !== -1) this.clientes[idx] = { ...this.formCliente };
+          } else {
+            const nuevoId = (this.clientes.length > 0 ? Math.max(...this.clientes.map(c => c.id)) : 0) + 1;
+            this.clientes.push({
+              ...this.formCliente,
+              id: nuevoId,
+              saldo_deudor: 0
+            });
+            this.pedidoClienteId = nuevoId;
+            this.cambiarClientePedido();
+          }
+          this.guardarStorage();
+          this.modalNuevoCliente = false;
+        },
+
+        // ================= CATÁLOGO =================
+        get catalogoFiltrado() {
+          const q = this.filtroCatalogo.trim().toLowerCase();
+          if (!q) return this.catalogo;
+          return this.catalogo.filter(p =>
+            (p.nombre || '').toLowerCase().includes(q) ||
+            (p.codigo || '').toLowerCase().includes(q) ||
+            (p.categoria || '').toLowerCase().includes(q)
+          );
+        },
+
+        abrirNuevoProducto() {
+          this.editandoProducto = false;
+          this.formProducto = { id: null, codigo: '', nombre: '', categoria: 'General', precio_unitario: 0, precio_mayorista: 0 };
+          this.modalNuevoProducto = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        editarProducto(p) {
+          this.editandoProducto = true;
+          this.formProducto = { ...p };
+          this.modalNuevoProducto = true;
+          this.$nextTick(() => lucide.createIcons());
+        },
+
+        guardarProductoForm() {
+          if (!this.formProducto.nombre.trim()) return;
+          if (this.editandoProducto) {
+            const idx = this.catalogo.findIndex(p => p.id === this.formProducto.id);
+            if (idx !== -1) this.catalogo[idx] = { ...this.formProducto };
+          } else {
+            const nuevoId = (this.catalogo.length > 0 ? Math.max(...this.catalogo.map(p => p.id)) : 0) + 1;
+            this.catalogo.push({ ...this.formProducto, id: nuevoId });
+          }
+          this.guardarStorage();
+          this.modalNuevoProducto = false;
+        },
+
+        eliminarProducto(id) {
+          if (!confirm('¿Deseás eliminar este producto?')) return;
+          this.catalogo = this.catalogo.filter(p => p.id !== id);
+          this.guardarStorage();
+        },
+
+        // ================= WHATSAPP CERO ROMBOS (GEMINI RULE) =================
+        generarLinkWhatsAppPedido(pedido) {
+          if (!pedido) return '#';
+          const tel = (pedido.cliente_telefono || '').replace(/\D/g, '');
+          const telLimpio = tel.startsWith('54') ? tel : (tel.startsWith('9') ? '54' + tel : '549' + tel);
+
+          let texto = '*AVISO DE PEDIDO*' + '%0A';
+          texto += '*' + (this.config.nombre_negocio || 'MINI CRM').toUpperCase() + '*%0A%0A';
+          texto += 'Hola *' + encodeURIComponent(pedido.cliente_nombre || 'Cliente') + '*, te compartimos el detalle de tu pedido #*' + pedido.id + '*:%0A%0A';
+
+          if (pedido.items && pedido.items.length) {
+            texto += '*Detalle de productos:*%0A';
+            pedido.items.forEach(it => {
+              texto += '• ' + it.cantidad + 'x ' + encodeURIComponent(it.nombre) + ' - ' + encodeURIComponent(this.formatearARS(it.subtotal)) + '%0A';
+            });
+            texto += '%0A';
+          }
+
+          texto += '*TOTAL:* ' + encodeURIComponent(this.formatearARS(pedido.total)) + '%0A';
+
+          if ((pedido.saldo_pendiente || 0) > 0) {
+            texto += '*Saldo pendiente:* ' + encodeURIComponent(this.formatearARS(pedido.saldo_pendiente)) + '%0A';
+            if (this.config.alias_mp) {
+              texto += '*Alias de transferencia:* ' + encodeURIComponent(this.config.alias_mp) + '%0A';
+            }
+          } else {
+            texto += '*Estado:* Cobrado / Al dia%0A';
+          }
+
+          texto += '%0AMuchas gracias por tu compra.';
+          return 'https://api.whatsapp.com/send?phone=' + telLimpio + '&text=' + texto;
+        },
+
+        generarLinkWhatsAppCliente(c) {
+          const tel = (c.telefono || '').replace(/\D/g, '');
+          const telLimpio = tel.startsWith('54') ? tel : (tel.startsWith('9') ? '54' + tel : '549' + tel);
+
+          let texto = '*AVISO DE VISITA*' + '%0A';
+          texto += '*' + (this.config.nombre_negocio || 'MINI CRM').toUpperCase() + '*%0A%0A';
+          texto += 'Hola *' + encodeURIComponent(c.nombre || 'Cliente') + '*, estamos coordinando el reparto en tu zona.%0A';
+
+          if (c.saldo_deudor > 0) {
+            texto += '%0A*Recordatorio de saldo pendiente:* ' + encodeURIComponent(this.formatearARS(c.saldo_deudor)) + '%0A';
+            if (this.config.alias_mp) {
+              texto += '*Alias de transferencia:* ' + encodeURIComponent(this.config.alias_mp) + '%0A';
+            }
+          }
+
+          texto += '%0A¿Que productos precisas que te acerquemos?';
+          return 'https://api.whatsapp.com/send?phone=' + telLimpio + '&text=' + texto;
+        },
+
+        // ================= FORMATO ARS =================
+        formatearARS(val) {
+          const num = Number(val) || 0;
+          return '$ ' + num.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+
+        // ================= EXPORTACIÓN EXCEL CSV & JSON =================
+        exportarExcelCSV() {
+          let csv = '\ufeff'; // UTF-8 BOM para Excel
+          csv += 'ID;Fecha;Cliente;Telefono;Direccion;Total;Cobrado;Saldo;Estado;Observaciones\n';
+          this.pedidos.forEach(p => {
+            const tot = (p.total || 0).toString().replace('.', ',');
+            const cob = (p.monto_cobrado || 0).toString().replace('.', ',');
+            const sal = (p.saldo_pendiente || 0).toString().replace('.', ',');
+            csv += `"${p.id}";"${p.fecha_formateada || p.fecha}";"${p.cliente_nombre}";"${p.cliente_telefono}";"${p.cliente_direccion}";"${tot}";"${cob}";"${sal}";"${p.estado}";"${p.observaciones || ''}"\n`;
+          });
+
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.setAttribute('href', url);
+          link.setAttribute('download', `pedidos_crm_${new Date().toISOString().slice(0, 10)}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        },
+
+        exportarBackupJSON() {
+          const dump = {
+            config: this.config,
+            clientes: this.clientes,
+            catalogo: this.catalogo,
+            pedidos: this.pedidos,
+            exportado_el: new Date().toISOString()
+          };
+          const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.setAttribute('href', url);
+          link.setAttribute('download', `crm_backup_${new Date().toISOString().slice(0, 10)}.json`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        },
+
+        importarBackupJSON(event) {
+          const file = event.target.files[0];
+          if (!file) return;
+          if (!confirm('¡ATENCIÓN! Se sobrescribirán los datos actuales con los del archivo. ¿Continuar?')) return;
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const data = JSON.parse(e.target.result);
+              if (data.config) this.config = data.config;
+              if (data.clientes) this.clientes = data.clientes;
+              if (data.catalogo) this.catalogo = data.catalogo;
+              if (data.pedidos) this.pedidos = data.pedidos;
+              this.guardarStorage();
+              alert('¡Copia de seguridad restaurada con éxito!');
+              window.location.reload();
+            } catch (err) {
+              alert('Archivo JSON inválido.');
+            }
+          };
+          reader.readAsText(file);
+        }
+      };
+    }
+  </script>
+</body>
+</html>
